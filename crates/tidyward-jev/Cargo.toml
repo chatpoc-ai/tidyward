@@ -1,0 +1,13 @@
+[package]
+name = "tidyward-jev"
+description = "Tidyward model client: Jev through TypeSafe or Vercel AI Gateway, batching, token counts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+ureq.workspace = true

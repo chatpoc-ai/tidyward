@@ -1,0 +1,128 @@
+//! Where Tidyward keeps its files, and the settings in `config.toml`.
+//!
+//! Data folder: `$TIDYWARD_HOME`, else the platform data folder
+//! (`~/Library/Application Support/Tidyward` on macOS). It holds `config.toml`, `rules.txt`
+//! and `tidyward.db`.
+
+use anyhow::{Context, Result, anyhow};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use tidyward_jev::Provider;
+
+pub const EXAMPLE_RULES: &str = include_str!("../../../rules.example.txt");
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    /// Folders to tidy; `~` is the home folder.
+    pub folders: Vec<String>,
+    /// "typesafe" or "vercel".
+    pub provider: String,
+    /// Items per model call (about 60 fit).
+    pub batch: usize,
+    /// A semantic condition applies at this probability or above.
+    pub hit: f64,
+    /// Between `weak` and `hit` the item is left to you.
+    pub weak: f64,
+    /// USD per million input tokens, for cost estimates.
+    pub price_per_million: f64,
+    /// Send the download source domain (domain only).
+    pub send_domain: bool,
+    /// `archive:<folder>` is relative to this; `~` is the home folder.
+    pub archive_root: String,
+    /// Ask Magika for content types when its command-line tool is installed.
+    pub magika: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            folders: vec!["~/Downloads".into()],
+            provider: "typesafe".into(),
+            batch: 40,
+            hit: tidyward_core::engine::HIT,
+            weak: tidyward_core::engine::WEAK,
+            price_per_million: 0.042,
+            send_domain: true,
+            archive_root: "~".into(),
+            magika: true,
+        }
+    }
+}
+
+pub fn expand(p: &str) -> PathBuf {
+    match p.strip_prefix('~') {
+        Some(rest) => dirs::home_dir().unwrap_or_default().join(rest.trim_start_matches('/')),
+        None => PathBuf::from(p),
+    }
+}
+
+pub struct Paths {
+    pub home: PathBuf,
+}
+
+impl Paths {
+    pub fn resolve(explicit: Option<&Path>) -> Result<Paths> {
+        let home = match explicit {
+            Some(p) => p.to_path_buf(),
+            None => match std::env::var_os("TIDYWARD_HOME") {
+                Some(h) => PathBuf::from(h),
+                None => dirs::data_dir().ok_or_else(|| anyhow!("no data folder on this system"))?.join("Tidyward"),
+            },
+        };
+        Ok(Paths { home })
+    }
+    pub fn config(&self) -> PathBuf {
+        self.home.join("config.toml")
+    }
+    pub fn rules(&self) -> PathBuf {
+        self.home.join("rules.txt")
+    }
+    pub fn db(&self) -> PathBuf {
+        self.home.join("tidyward.db")
+    }
+}
+
+impl Config {
+    pub fn load(paths: &Paths) -> Result<Config> {
+        match fs::read_to_string(paths.config()) {
+            Ok(t) => toml::from_str(&t).with_context(|| format!("bad {}", paths.config().display())),
+            Err(_) => Ok(Config::default()),
+        }
+    }
+
+    pub fn provider(&self) -> Result<Provider> {
+        Provider::parse(&self.provider).ok_or_else(|| anyhow!("unknown provider '{}' (use typesafe or vercel)", self.provider))
+    }
+}
+
+/// Create config.toml and rules.txt if missing. Returns what was created.
+pub fn init(paths: &Paths) -> Result<Vec<PathBuf>> {
+    fs::create_dir_all(&paths.home)?;
+    let mut made = Vec::new();
+    if !paths.config().exists() {
+        fs::write(paths.config(), toml::to_string_pretty(&Config::default())?)?;
+        made.push(paths.config());
+    }
+    if !paths.rules().exists() {
+        fs::write(paths.rules(), EXAMPLE_RULES)?;
+        made.push(paths.rules());
+    }
+    Ok(made)
+}
+
+/// The provider key: environment first, then the system keychain.
+pub fn api_key(p: Provider) -> Result<String> {
+    for var in p.key_env() {
+        if let Ok(v) = std::env::var(var) {
+            if !v.trim().is_empty() {
+                return Ok(v.trim().to_string());
+            }
+        }
+    }
+    let entry = keyring::Entry::new("tidyward", p.name())?;
+    entry.get_password().map_err(|_| {
+        anyhow!("no {} key: run `tidyward key set`, or set {}", p.name(), p.key_env().join(" or "))
+    })
+}

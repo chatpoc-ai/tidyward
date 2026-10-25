@@ -2,7 +2,7 @@
 
 Tidyward is a private AI housekeeper for your computer. It works out what each file is, applies rules you write, and suggests what to keep, archive or move to the Trash. Nothing moves until you confirm, and every change can be undone.
 
-> **Status:** design stage. The Rust core is being built; see the [roadmap](docs/roadmap.md). macOS comes first, Windows later.
+> **Status:** early. The core and the command line work on macOS (scan, identify, rules, plan, apply, undo, usage). There is no scheduler or app yet; see the [roadmap](docs/roadmap.md). Windows comes later.
 
 ## How it works
 
@@ -29,6 +29,23 @@ See [docs/design.md](docs/design.md) for the details.
 ## Cost
 
 Tidyward is built to be cheap and fast, and a clean-up once a week is enough. It remembers what it has already judged, so after the first run it only pays for new or changed files. Jev costs $0.042 per million input tokens, and output is free.
+
+## Try it
+
+Requires macOS and Rust 1.85 or later. [Magika](https://github.com/google/magika) is optional (`brew install magika`).
+
+```bash
+cargo install --path crates/tidyward-cli
+tidyward init        # creates config.toml and rules.txt in ~/Library/Application Support/Tidyward
+tidyward key set     # paste your TypeSafe key (it is stored in the keychain)
+tidyward scan        # scans ~/Downloads and writes a plan; nothing is moved
+tidyward plan        # what it suggests, and why
+tidyward apply       # asks before each group, and before each item that goes to the Trash
+tidyward undo        # puts everything from the last apply back
+tidyward usage       # tokens and cost
+```
+
+To use Vercel AI Gateway instead, set `provider = "vercel"` in `config.toml`. The key can also come from `TYPESAFE_API_KEY` or `AI_GATEWAY_API_KEY` in the environment.
 
 ## Example rules
 

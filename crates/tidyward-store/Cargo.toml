@@ -1,0 +1,18 @@
+[package]
+name = "tidyward-store"
+description = "Tidyward local database: file memory, token ledger, plans, operation log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tidyward-core.workspace = true
+anyhow.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

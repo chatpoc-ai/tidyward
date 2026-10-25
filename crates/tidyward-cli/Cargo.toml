@@ -1,0 +1,30 @@
+[package]
+name = "tidyward-cli"
+description = "The tidyward command"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "tidyward"
+path = "src/main.rs"
+
+[dependencies]
+tidyward-core.workspace = true
+tidyward-platform.workspace = true
+tidyward-store.workspace = true
+tidyward-jev.workspace = true
+tidyward-exec.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+dirs.workspace = true
+keyring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

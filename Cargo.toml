@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/chatpoc-ai/tidyward"
+rust-version = "1.85"
+
+[workspace.dependencies]
+tidyward-core = { path = "crates/tidyward-core" }
+tidyward-platform = { path = "crates/tidyward-platform" }
+tidyward-store = { path = "crates/tidyward-store" }
+tidyward-jev = { path = "crates/tidyward-jev" }
+tidyward-exec = { path = "crates/tidyward-exec" }
+anyhow = "1"
+chrono = "0.4"
+fancy-regex = "0.20"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.11"
+rusqlite = { version = "0.41", features = ["bundled"] }
+ureq = { version = "3", features = ["json"] }
+clap = { version = "4", features = ["derive"] }
+toml = "1"
+dirs = "7"
+tempfile = "3"
+keyring = "4"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSFileManager", "NSURL", "NSError", "NSString"] }
