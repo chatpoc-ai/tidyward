@@ -17,6 +17,7 @@ tidyward-jev = { path = "crates/tidyward-jev" }
 tidyward-exec = { path = "crates/tidyward-exec" }
 anyhow = "1"
 chrono = "0.4"
+unicode-normalization = "0.1"
 fancy-regex = "0.20"
 regex = "1"
 serde = { version = "1", features = ["derive"] }

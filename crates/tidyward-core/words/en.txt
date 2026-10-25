@@ -1,0 +1,28 @@
+# English
+# Generic words kept in masked file names: what kind of file it is, never who or what it is about.
+# Whitespace-separated; lines starting with # are comments. Matching ignores case and accents.
+img image images dsc dscn dscf pxl mvimg vid video photo photos pic pics picture scan scanned scanner
+screenshot screenshots screen shot recording cleanshot snip snapshot capture
+wechat weixin whatsapp telegram signal mmexport messenger line kakaotalk
+invoice invoices receipt receipts bill bills billing statement statements payment payments payslip paystub
+salary bank tax taxes return w2 t4 1099 refund quote quotation order orders purchase estimate
+contract contracts agreement agreements lease nda terms offer letter resume cv cover passport visa id
+license licence certificate cert diploma transcript report reports form forms application signed
+signature insurance coverage benefit benefits booklet policy claim medical lab prescription ticket tickets boarding pass itinerary booking
+reservation confirmation hotel flight
+manual guide handbook tutorial notes note slides deck presentation paper whitepaper article ebook book
+chapter readme draft final copy version rev revised old new updated summary minutes agenda meeting
+setup install installer mac macos osx darwin arm arm64 aarch64 x64 x86 amd64 intel universal win windows
+linux dmg pkg release beta alpha update upgrade patch driver drivers plugin extension app desktop cli
+backup export exported import data dataset db dump log logs temp tmp cache download downloads archive
+sample samples test demo example template mockup design logo icon icons wallpaper avatar banner poster
+untitled unnamed document doc file files part partial crdownload
+audio music song songs movie episode voice memo podcast
+model stl gcode print plate
+a an the at of and or for to in on by with from my your our de
+password passwords passwd pwd key keys secret secrets token tokens code codes recovery 2fa otp mfa
+seed phrase wallet credential credentials login
+jan feb mar apr may jun jul aug sep sept oct nov dec january february march april june july august
+september october november december
+# Canada
+notice assessment contribution noa t4a t5 t2202 rrsp tfsa resp fhsa cra hydro utility utilities phone internet rent

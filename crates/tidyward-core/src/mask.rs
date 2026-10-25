@@ -1,91 +1,90 @@
 //! Mask a file name so it keeps its shape and meaning but not who or what it is about.
 //!
-//! Generic words that tell what kind of file it is (IMG, Screenshot, invoice, 合同, setup) are
-//! kept; everything else becomes a placeholder:
+//! Generic words that tell what kind of file it is (IMG, Screenshot, facture, 合同, 請求書, 영수증)
+//! are kept; everything else becomes a placeholder:
 //!
 //! | placeholder                       | stands for                                              |
 //! |-----------------------------------|---------------------------------------------------------|
 //! | `<date:…>`                        | a date in the name, as how long ago it is               |
 //! | `<time>` `<version>` `<id>` `<n>` | clock times, versions, hex/uuid ids, other numbers      |
-//! | `<word>`                          | any Latin word not in the allowlist (names, companies)  |
-//! | `<中文>`                           | any Chinese run not in the allowlist                    |
+//! | `<word>`                          | a Latin-script word not in the word lists (names, companies) |
+//! | `<中文>` `<かな>` `<한글>`          | Chinese characters (or kanji), kana, Hangul not in the lists |
+//! | `<text>`                          | a word in any other script                              |
+//!
+//! The word lists are in `words/`, one file per language: English, French, Simplified and
+//! Traditional Chinese, Japanese, Korean. Latin words match ignoring case and accents; CJK and
+//! Hangul runs are split by longest match. Names are normalized to NFC first, since macOS file
+//! names may be decomposed.
 //!
 //! ```text
 //! IMG_4821.HEIC             -> IMG_<n>.HEIC
 //! Invoice_Acme_2025-09.pdf  -> Invoice_<word>_<date:1-2 years ago>.pdf
 //! 张三_劳动合同_签字版.pdf     -> <中文>_劳动合同_签字版.pdf
+//! 請求書_山田商事.pdf          -> 請求書_<中文>.pdf
 //! ```
 
 use chrono::{Datelike, NaiveDate};
 use fancy_regex::Regex;
 use std::collections::HashSet;
 use std::sync::LazyLock;
+use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::is_combining_mark;
 
-const WORDS: &str = "
-img image images dsc dscn dscf pxl mvimg vid video photo photos pic pics picture scan scanned scanner
-screenshot screenshots screen shot recording cleanshot snip snapshot capture
-wechat weixin whatsapp telegram signal mmexport messenger line kakaotalk
-invoice invoices receipt receipts bill bills billing statement statements payment payments payslip paystub
-salary bank tax taxes return w2 t4 1099 refund quote quotation order orders purchase estimate
-contract contracts agreement agreements lease nda terms offer letter resume cv cover passport visa id
-license licence certificate cert diploma transcript report reports form forms application signed
-signature insurance coverage benefit benefits booklet policy claim medical lab prescription ticket tickets boarding pass itinerary booking
-reservation confirmation hotel flight
-manual guide handbook tutorial notes note slides deck presentation paper whitepaper article ebook book
-chapter readme draft final copy version rev revised old new updated summary minutes agenda meeting
-setup install installer mac macos osx darwin arm arm64 aarch64 x64 x86 amd64 intel universal win windows
-linux dmg pkg release beta alpha update upgrade patch driver drivers plugin extension app desktop cli
-backup export exported import data dataset db dump log logs temp tmp cache download downloads archive
-sample samples test demo example template mockup design logo icon icons wallpaper avatar banner poster
-untitled unnamed document doc file files part partial crdownload
-audio music song songs movie episode voice memo podcast
-model stl gcode print plate
-a an the at of and or for to in on by with from my your our de
-password passwords passwd pwd key keys secret secrets token tokens code codes recovery 2fa otp mfa
-seed phrase wallet credential credentials login
-jan feb mar apr may jun jul aug sep sept oct nov dec january february march april june july august
-september october november december
-";
+const EN: &str = include_str!("../words/en.txt");
+const FR: &str = include_str!("../words/fr.txt");
+const ZH_HANS: &str = include_str!("../words/zh-hans.txt");
+const ZH_HANT: &str = include_str!("../words/zh-hant.txt");
+const JA: &str = include_str!("../words/ja.txt");
+const KO: &str = include_str!("../words/ko.txt");
 
-const ZH: &str = "
-截屏 截图 屏幕快照 屏幕截图 屏幕录制 录屏 照片 相片 图片 图像 扫描 扫描件 拍照
-微信 微信图片 企业微信 钉钉 飞书 QQ
-发票 电子发票 收据 账单 对账单 流水 银行 电费 水费 燃气费 话费 网费 物业费 房租 工资 工资条 付款 收款 报销 订单 报价 报价单 采购 退款
-合同 协议 劳动合同 租房 租赁 简历 护照 签证 身份证 驾照 证书 证明 毕业证 成绩单 申请 申请表 表格
-签字 签名 签字版 盖章 保险 保单 福利 理赔 体检 病历 处方 机票 车票 行程 行程单 预订 确认 确认函 酒店
-报税 税 个税 社保 公积金 通知 学校 作业 课件 考试 论文 报告 说明书 手册 教程 笔记 会议 会议纪要
-草稿 初稿 终稿 最终版 修改 修订 副本 备份 导出 数据 日志 临时 下载 模板 设计 壁纸 头像 海报 未命名
-密码 密钥 秘钥 恢复码 备份码 验证码 助记词 私钥 钱包 账号 安装 安装包 更新 驱动 视频 音频 录音 音乐 歌曲 电影 文档 文件 资料 演示 幻灯片 新建 年度 季度 年 月 日
-";
+fn entries(files: &[&'static str]) -> impl Iterator<Item = String> {
+    files
+        .iter()
+        .flat_map(|f| f.lines())
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .flat_map(str::split_whitespace)
+        .map(|w| w.nfc().collect())
+}
 
-static WORD_SET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| WORDS.split_whitespace().collect());
+/// Lowercase without accents: "Relevé" and "releve" are the same word.
+fn fold(w: &str) -> String {
+    w.nfd().filter(|c| !is_combining_mark(*c)).collect::<String>().to_lowercase()
+}
+
+static LATIN_WORDS: LazyLock<HashSet<String>> = LazyLock::new(|| entries(&[EN, FR]).map(|w| fold(&w)).collect());
 
 /// Longest first, so 微信图片 wins over 微信.
-static ZH_LIST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    let mut v: Vec<&str> = ZH.split_whitespace().collect::<HashSet<_>>().into_iter().collect();
+fn longest_first(files: &[&'static str]) -> Vec<String> {
+    let mut v: Vec<String> = entries(files).collect::<HashSet<_>>().into_iter().collect();
     v.sort_by(|a, b| b.chars().count().cmp(&a.chars().count()).then(a.cmp(b)));
     v
-});
+}
+
+static CJK_WORDS: LazyLock<Vec<String>> = LazyLock::new(|| longest_first(&[ZH_HANS, ZH_HANT, JA]));
+static HANGUL_WORDS: LazyLock<Vec<String>> = LazyLock::new(|| longest_first(&[KO]));
 
 static TOKEN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?ix)
   (?P<kw>(?:arm64|aarch64|x86_64|x64|x86|amd64|w2|t4|1099|mp3|mp4|h264|4k|1080p|720p)(?![A-Za-z0-9]))
 | (?P<datetime>(?:19|20)\d{6}[_\-T]?\d{6})
-| (?P<date>(?:19|20)\d{2}年(?!\d)|\d{4}[-_.年]?\d{1,2}[-_.月]?\d{1,2}日?|\d{1,2}月\d{1,2}日|\d{4}[-_.年]\d{1,2}月?)
+| (?P<date>(?:19|20)\d{2}년\s?\d{1,2}월(?:\s?\d{1,2}일)?|(?:19|20)\d{2}[年년](?!\d)|\d{1,2}월\s?\d{1,2}일|\d{4}[-_.年]?\d{1,2}[-_.月]?\d{1,2}日?|\d{1,2}月\d{1,2}日|\d{4}[-_.年]\d{1,2}月?)
 | (?P<time>\d{1,2}[.:：]\d{2}(?:[.:：]\d{2})?(?:\s?[AP]M)?)
 | (?P<version>v?\d+(?:\.\d+){1,3}[a-z]?\b)
 | (?P<id>(?=[0-9a-f-]*[a-f])(?=[0-9a-f-]*\d)[0-9a-f]{8,}(?:-[0-9a-f]{4,})*)
 | (?P<n>\d+)
-| (?P<latin>[A-Za-z]+)
-| (?P<zh>[一-鿿]+)
+| (?P<latin>\p{Latin}+)
+| (?P<cjk>[\p{Han}\p{Hiragana}\p{Katakana}ー々〆]+)
+| (?P<hangul>\p{Hangul}+)
+| (?P<letters>\p{L}+)
 | (?P<other>.)",
     )
     .expect("token regex")
 });
 
-static CAMEL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+").unwrap());
-static COLLAPSE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(<word>|<中文>)(?:[\s_\-]*\1)+").unwrap());
+static CAMEL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Lu}+(?!\p{Ll})|\p{Lu}?\p{Ll}+").unwrap());
+static COLLAPSE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(<word>|<中文>|<かな>|<한글>|<text>)(?:[\s_\-]*\1)+").unwrap());
 static DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
 static YEAR4: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d{4}").unwrap());
 static EXT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9]+$").unwrap());
@@ -115,7 +114,7 @@ fn date_words(s: &str, today: NaiveDate) -> Option<&'static str> {
         }
         nums = vec![d[..4].parse().ok()?, d[4..6].parse().ok()?, d[6..8].parse().ok()?];
     }
-    let no_year = s.contains('月') && !YEAR4.is_match(s).unwrap_or(false);
+    let no_year = (s.contains('月') || s.contains('월')) && !YEAR4.is_match(s).unwrap_or(false);
     if no_year {
         // 10月24日: no year, assume the last such day
         nums.insert(0, today.year() as i64);
@@ -134,7 +133,7 @@ fn date_words(s: &str, today: NaiveDate) -> Option<&'static str> {
 }
 
 fn latin(w: &str) -> String {
-    if WORD_SET.contains(w.to_lowercase().as_str()) {
+    if LATIN_WORDS.contains(&fold(w)) {
         return w.to_string();
     }
     // camelCase / PascalCase: keep the generic parts, e.g. ScreenRecording, BankStatement
@@ -142,27 +141,39 @@ fn latin(w: &str) -> String {
     if parts.len() > 1 {
         return parts
             .iter()
-            .map(|p| if WORD_SET.contains(p.to_lowercase().as_str()) { p.to_string() } else { "<word>".into() })
+            .map(|p| if LATIN_WORDS.contains(&fold(p)) { p.to_string() } else { "<word>".into() })
             .collect();
     }
     "<word>".into()
 }
 
-fn zh(run: &str) -> String {
+/// The placeholder for a character no listed word covers.
+fn hidden(c: char) -> &'static str {
+    match c {
+        '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}' => "<かな>",
+        '\u{1100}'..='\u{11ff}' | '\u{3130}'..='\u{318f}' | '\u{ac00}'..='\u{d7af}' => "<한글>",
+        _ => "<中文>",
+    }
+}
+
+/// Split a run with no spaces (Chinese, Japanese, Korean) into listed words, longest first;
+/// everything else becomes placeholders.
+fn split_run(run: &str, words: &[String]) -> String {
     let mut out = String::new();
     let mut rest = run;
-    let mut gap = false;
+    let mut last = "";
     while !rest.is_empty() {
-        if let Some(hit) = ZH_LIST.iter().find(|t| rest.starts_with(**t)) {
+        if let Some(hit) = words.iter().find(|t| rest.starts_with(t.as_str())) {
             out.push_str(hit);
             rest = &rest[hit.len()..];
-            gap = false;
+            last = "";
         } else {
-            if !gap {
-                out.push_str("<中文>");
-            }
-            gap = true;
             let c = rest.chars().next().unwrap();
+            let p = hidden(c);
+            if p != last {
+                out.push_str(p);
+            }
+            last = p;
             rest = &rest[c.len_utf8()..];
         }
     }
@@ -182,10 +193,11 @@ fn split_ext(name: &str) -> (&str, String) {
 
 /// The masked name sent to the model instead of the real one.
 pub fn mask(name: &str, today: NaiveDate) -> String {
-    let (stem, ext) = split_ext(name);
+    let name: String = name.nfc().collect();
+    let (stem, ext) = split_ext(&name);
     let mut out = String::new();
     for caps in TOKEN.captures_iter(stem).filter_map(Result::ok) {
-        let (kind, text) = ["kw", "datetime", "date", "time", "version", "id", "n", "latin", "zh", "other"]
+        let (kind, text) = ["kw", "datetime", "date", "time", "version", "id", "n", "latin", "cjk", "hangul", "letters", "other"]
             .iter()
             .find_map(|k| caps.name(k).map(|m| (*k, m.as_str())))
             .unwrap();
@@ -201,9 +213,11 @@ pub fn mask(name: &str, today: NaiveDate) -> String {
                 }
             }
             "latin" => out.push_str(&latin(text)),
-            "zh" => out.push_str(&zh(text)),
+            "cjk" => out.push_str(&split_run(text, &CJK_WORDS)),
+            "hangul" => out.push_str(&split_run(text, &HANGUL_WORDS)),
+            "letters" => out.push_str("<text>"),
             "other" => {
-                if " _-.()[]+&,@#".contains(text) {
+                if " _-.()[]+&,@#'’（）「」【】・".contains(text) {
                     out.push_str(text);
                 }
             }
@@ -245,6 +259,29 @@ mod tests {
         assert_eq!(m("acme_backup_code.txt"), "<word>_backup_code.txt");
         assert_eq!(m("service-recovery-codes.txt"), "<word>-recovery-codes.txt");
         assert_eq!(m("我的钱包助记词.txt"), "<中文>钱包助记词.txt");
+    }
+
+    #[test]
+    fn five_languages() {
+        assert_eq!(m("Capture d’écran 2026-10-24 à 15.22.33.png"), "Capture d’écran <date:this week> à <time>.png");
+        assert_eq!(m("Relevé bancaire Desjardins octobre.pdf"), "Relevé bancaire <word> octobre.pdf");
+        assert_eq!(m("releve BANCAIRE.pdf"), "releve BANCAIRE.pdf", "accents and case are ignored");
+        assert_eq!(m("螢幕截圖 2026-10-24 下午3.22.33.png"), "螢幕截圖 <date:this week> 下午<time>.png");
+        assert_eq!(m("陳大文_電費帳單.pdf"), "<中文>_電費帳單.pdf");
+        assert_eq!(m("スクリーンショット 2026-10-24 15.22.33.png"), "スクリーンショット <date:this week> <time>.png");
+        assert_eq!(m("請求書_山田商事.pdf"), "請求書_<中文>.pdf");
+        assert_eq!(m("やまだ たろう 履歴書.docx"), "<かな> 履歴書.docx");
+        assert_eq!(m("領収書（コンビニ）.pdf"), "領収書（<かな>）.pdf");
+        assert_eq!(m("스크린샷 2026-10-24 오후 3.22.33.png"), "스크린샷 <date:this week> 오후 <time>.png");
+        assert_eq!(m("김민수_영수증_2026년 9월 1일.pdf"), "<한글>_영수증_<date:1-3 months ago>.pdf");
+        assert_eq!(m("Счёт Иванов.pdf"), "<text>.pdf", "other scripts are hidden, never dropped");
+    }
+
+    #[test]
+    fn decomposed_names() {
+        let nfd = |s: &str| s.nfd().collect::<String>();
+        assert_eq!(m(&nfd("Relevé bancaire.pdf")), "Relevé bancaire.pdf");
+        assert_eq!(m(&nfd("김민수_영수증.pdf")), "<한글>_영수증.pdf");
     }
 
     #[test]

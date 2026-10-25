@@ -1,0 +1,15 @@
+# Français
+# Generic words kept in masked file names: what kind of file it is, never who or what it is about.
+# Whitespace-separated; lines starting with # are comments. Matching ignores case and accents.
+capture captures écran écrans enregistrement photo photos image images numérisation numérisé scan
+facture factures reçu reçus reçue quittance relevé relevés bancaire banque compte paiement paie bulletin
+salaire fiche impôt impôts déclaration revenus avis cotisation remboursement soumission devis commande achat
+contrat contrats bail entente accord offre lettre curriculum vitae passeport carte identité permis conduire
+certificat diplôme attestation formulaire formulaires demande signé signée signature assurance réclamation
+santé médical ordonnance billet billets embarquement réservation confirmation hôtel vol itinéraire
+manuel guide notes présentation rapport brouillon copie version finale réunion procès verbal ordre jour
+sauvegarde exportation téléchargement téléchargements modèle sans titre document documents fichier fichiers
+mot passe clé clés code codes récupération secret jeton portefeuille identifiants connexion
+électricité gaz téléphone loyer hydro vidéo audio musique enregistré mise jour installation
+de du des la le les et à au aux en pour sur avec d l un une
+janvier février mars avril mai juin juillet août septembre octobre novembre décembre

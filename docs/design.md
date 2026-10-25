@@ -100,14 +100,15 @@ The path, the real name, the contents and the exact app name and version are nev
 
 ### Masking
 
-Generic words that say what kind of file something is (IMG, Screenshot, Invoice, Resume, contract, setup, arm64, backup, recovery, and their Chinese equivalents) are kept. Everything else becomes a placeholder:
+Generic words that say what kind of file something is (IMG, Screenshot, Invoice, Resume, contract, setup, arm64, backup, recovery) are kept, in English, French, Simplified and Traditional Chinese, Japanese and Korean. The word lists are plain text files in [`crates/tidyward-core/words/`](../crates/tidyward-core/words), one per language. Names are normalized to NFC first (macOS names can be decomposed), and Latin words match ignoring case and accents. Everything else becomes a placeholder:
 
 | Placeholder | Stands for |
 |---|---|
 | `<date:…>` | a date in the name, turned into how long ago it was (the month of an invoice still matters) |
 | `<time>` `<version>` `<id>` `<n>` | clock times, versions, hex or UUID ids, other numbers |
-| `<word>` | any Latin word not in the allowlist: names, companies, topics |
-| `<中文>` | any Chinese run not in the allowlist |
+| `<word>` | a Latin-script word not in the word lists: names, companies, topics |
+| `<中文>` `<かな>` `<한글>` | Chinese characters (or kanji), kana or Hangul not in the word lists |
+| `<text>` | a word in any other script |
 
 Runs of placeholders are merged, so a name's length does not leak.
 
@@ -116,9 +117,12 @@ IMG_4821.HEIC                 → IMG_<n>.HEIC
 Screenshot 2026-10-01 at 9.12.03 AM.png → Screenshot <date:this month> at <time>.png
 Jane Doe Resume (1).docx      → <word> Resume (<n>).docx
 张三_劳动合同_签字版.pdf         → <中文>_劳动合同_签字版.pdf
+Facture_Dupont_2025-09.pdf    → Facture_<word>_<date:1-2 years ago>.pdf
+請求書_山田商事.pdf              → 請求書_<中文>.pdf
+김민수_영수증.pdf                → <한글>_영수증.pdf
 ```
 
-The allowlist is the part most likely to need care. A generic word missing from it hides useful meaning: if `code` is missing, `…_backup_code.txt` no longer looks like a secret.
+The word lists are the part most likely to need care, and adding a language is mostly adding a file. A generic word missing from it hides useful meaning: if `code` is missing, `…_backup_code.txt` no longer looks like a secret.
 
 ## Batching
 

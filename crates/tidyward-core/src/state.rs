@@ -14,7 +14,7 @@ pub struct StateOptions<'a> {
 }
 
 pub const MASK_NOTE: &str =
-    "  (<date> <time> <n> <id> <version> stand for numbers; <word> and <中文> stand for hidden words such as names)";
+    "  (<date> <time> <n> <id> <version> stand for numbers; <word>, <中文>, <かな>, <한글> and <text> stand for hidden words such as names)";
 
 pub fn folder_label(folder_name: &str) -> &'static str {
     match folder_name {
