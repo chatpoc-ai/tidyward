@@ -1,0 +1,41 @@
+# Tidyward rules: one per line
+#
+#   action | semantic condition | exact conditions
+#
+# action               keep / archive:<folder> / trash / ask
+# semantic condition   plain language, judged by the model ("a screenshot", "an invoice"); * means any.
+#                      The model sees only the masked name and metadata, never the real name or contents.
+# exact conditions     checked locally, comma-separated, all must hold:
+#                      arrived>N days  arrived<N days  opened>N days  opened<N days  never opened
+#                      size>N MB  size<N MB  extension=.a/.b  has duplicate  app installed
+#                      name starts with X  name contains X   (name checks use the real name, on this machine)
+#                      "has duplicate" holds only for extra copies; each group keeps its earliest original.
+#
+# Order is priority: the first rule that applies wins. Put protective rules first.
+
+# --- protect first: never cleaned up automatically ---
+ask                          | passwords, keys, recovery codes or backup codes |
+ask                          | a passport, ID card, visa or driver's licence   |
+archive:Documents/Finance    | an invoice, receipt, bill or bank statement     |
+archive:Documents/Insurance  | an insurance policy, benefits booklet or claim  |
+archive:Documents/Forms      | a filled-in or signed application or claim form |
+keep                         | *                                               | arrived<7 days
+keep                         | *                                               | opened<7 days
+
+# --- screenshots ---
+trash                        | a screenshot                                    | arrived>90 days, never opened
+archive:Pictures/Screenshots | a screenshot                                    | arrived>30 days
+keep                         | a screenshot                                    |
+
+# --- photos ---
+archive:Pictures/Camera      | *                                               | name starts with IMG_, extension=.heic/.jpg/.jpeg
+archive:Pictures/Saved       | a picture saved from the web or a chat app      |
+
+# --- installers, archives, duplicates ---
+trash                        | *                                               | extension=.dmg/.pkg, app installed
+trash                        | *                                               | has duplicate
+ask                          | a zip or other archive                          |
+
+# --- everything else ---
+archive:Movies               | a video                                         | arrived>30 days
+archive:Documents/Archive    | a document                                      | opened>180 days

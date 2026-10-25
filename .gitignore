@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Rust
+/target/
+**/target/
+
+# Secrets: provider keys live in the keychain or a local .env, never in the repo
+.env
+.env.*
+!.env.example
+
+# Local scan output: real file names, paths and model answers
+*.db
+*.db-journal
+results/
