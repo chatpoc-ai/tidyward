@@ -12,6 +12,7 @@ name = "tidyward"
 path = "src/main.rs"
 
 [dependencies]
+tidyward.workspace = true
 tidyward-core.workspace = true
 tidyward-platform.workspace = true
 tidyward-store.workspace = true

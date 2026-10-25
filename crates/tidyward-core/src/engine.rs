@@ -38,6 +38,12 @@ pub struct Decision {
     pub decided_by: DecidedBy,
     /// Other rules that also applied (with probability >= hit), for the plan view.
     pub also_hit: Vec<String>,
+    /// How sure the deciding rule is: 1 for exact-only rules, else the model's probability.
+    #[serde(default)]
+    pub probability: f64,
+    /// A rule matched only weakly (between `weak` and `hit`), so the item is left to the person.
+    #[serde(default)]
+    pub weak: bool,
 }
 
 pub fn candidates<'a>(rules: &'a [Rule], item: &Item, now: i64) -> Vec<&'a Rule> {
@@ -63,7 +69,7 @@ pub fn decide(cands: &[&Rule], sem: &HashMap<String, f64>, hit: f64, weak: f64) 
     let first = cands.iter().find(|r| p(r) >= weak);
     let hits: Vec<String> = cands.iter().filter(|r| p(r) >= hit).map(|r| r.id.clone()).collect();
     let Some(first) = first else {
-        return Decision { action: Action::Ask, rule: None, why: "no rule applies".into(), decided_by: DecidedBy::None, also_hit: hits };
+        return Decision { action: Action::Ask, rule: None, why: "no rule applies".into(), decided_by: DecidedBy::None, also_hit: hits, probability: 0.0, weak: false };
     };
     let prob = p(first);
     let also_hit = hits.into_iter().filter(|h| h != &first.id).collect();
@@ -75,9 +81,11 @@ pub fn decide(cands: &[&Rule], sem: &HashMap<String, f64>, hit: f64, weak: f64) 
             why: format!("weak match {} ({prob:.2})", first.id),
             decided_by,
             also_hit,
+            probability: prob,
+            weak: true,
         };
     }
-    Decision { action: first.action.clone(), rule: Some(first.id.clone()), why: format!("{} ({prob:.2})", first.id), decided_by, also_hit }
+    Decision { action: first.action.clone(), rule: Some(first.id.clone()), why: format!("{} ({prob:.2})", first.id), decided_by, also_hit, probability: prob, weak: false }
 }
 
 /// Where the items sit, as said to the model: "Downloads folder", or just "folder".

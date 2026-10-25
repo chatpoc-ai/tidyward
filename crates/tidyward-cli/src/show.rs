@@ -1,6 +1,6 @@
 //! Printing plans.
 
-use crate::scan::{Plan, PlanItem};
+use tidyward::{Plan, PlanItem};
 use std::collections::BTreeMap;
 use tidyward_core::{Action, DecidedBy};
 

@@ -2,7 +2,7 @@
 
 ## Layout
 
-A Cargo workspace. The core logic is a library, and the command line is a thin shell over it.
+A Cargo workspace. The core logic is a library, and the command line is a thin shell over it. Apps use the same `tidyward` library, so what is sent to the model and what may be moved is decided by open code.
 
 ```
 crates/
@@ -11,7 +11,8 @@ crates/
   tidyward-jev/        model providers, batching, retries, token accounting
   tidyward-store/      SQLite: file memory, token ledger, plans, operation log
   tidyward-exec/       move / Trash with an operation log, undo
-  tidyward-cli/        the `tidyward` command
+  tidyward/            the pipeline as a library: scan, plan, apply one item, undo (no printing, no prompts)
+  tidyward-cli/        the `tidyward` command: prompts and printing over the `tidyward` library
 ```
 
 The core is meant to expose extension points (not done yet), so new capabilities become new implementations rather than changes to the pipeline:

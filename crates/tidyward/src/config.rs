@@ -112,6 +112,39 @@ pub fn init(paths: &Paths) -> Result<Vec<PathBuf>> {
     Ok(made)
 }
 
+impl Config {
+    pub fn save(&self, paths: &Paths) -> Result<()> {
+        fs::create_dir_all(&paths.home)?;
+        fs::write(paths.config(), toml::to_string_pretty(self)?)?;
+        Ok(())
+    }
+}
+
+/// Where the provider key would come from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "var", rename_all = "snake_case")]
+pub enum KeySource {
+    Env(String),
+    Keychain,
+    Missing,
+}
+
+pub fn key_source(p: Provider) -> KeySource {
+    if let Some(v) = p.key_env().iter().find(|v| std::env::var(v).map(|x| !x.trim().is_empty()).unwrap_or(false)) {
+        return KeySource::Env(v.to_string());
+    }
+    match keyring::Entry::new("tidyward", p.name()).and_then(|e| e.get_password()) {
+        Ok(_) => KeySource::Keychain,
+        Err(_) => KeySource::Missing,
+    }
+}
+
+/// Store the key in the system keychain (service "tidyward", account = provider name).
+pub fn set_key(p: Provider, key: &str) -> Result<()> {
+    keyring::Entry::new("tidyward", p.name())?.set_password(key.trim())?;
+    Ok(())
+}
+
 /// The provider key: environment first, then the system keychain.
 pub fn api_key(p: Provider) -> Result<String> {
     for var in p.key_env() {

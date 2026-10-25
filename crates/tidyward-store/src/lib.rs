@@ -61,7 +61,7 @@ pub struct UsageRow {
     pub ms: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RunSummary {
     pub run: String,
     pub ts: i64,
@@ -72,7 +72,7 @@ pub struct RunSummary {
     pub input_tokens: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Operation {
     pub id: i64,
     pub plan_id: Option<i64>,
@@ -259,6 +259,16 @@ impl Store {
         Ok(self
             .conn
             .query_row("SELECT id, created, folder, body FROM plans ORDER BY id DESC LIMIT 1", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, PathBuf::from(r.get::<_, String>(2)?), r.get(3)?))
+            })
+            .optional()?)
+    }
+
+    /// (id, created, folder, body) of the newest plan for one folder.
+    pub fn latest_plan_for(&self, folder: &Path) -> Result<Option<(i64, i64, PathBuf, String)>> {
+        Ok(self
+            .conn
+            .query_row("SELECT id, created, folder, body FROM plans WHERE folder = ?1 ORDER BY id DESC LIMIT 1", [p(folder)], |r| {
                 Ok((r.get(0)?, r.get(1)?, PathBuf::from(r.get::<_, String>(2)?), r.get(3)?))
             })
             .optional()?)

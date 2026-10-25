@@ -1,14 +1,12 @@
 //! `tidyward`: a private AI housekeeper for your computer. See docs/design.md.
 
 mod apply;
-mod config;
-mod scan;
 mod show;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use config::{Config, Paths};
-use scan::Plan;
+use tidyward::config::{self, Config, KeySource, Paths};
+use tidyward::{Plan, scan};
 use std::collections::{BTreeMap, HashSet};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -66,8 +64,7 @@ enum KeyCmd {
 }
 
 fn latest_plan(store: &Store) -> Result<(i64, Plan)> {
-    let (id, _, _, body) = store.latest_plan()?.context("no plan yet: run `tidyward scan`")?;
-    Ok((id, serde_json::from_str(&body)?))
+    scan::latest_plan(store)?.context("no plan yet: run `tidyward scan`")
 }
 
 fn usage(cfg: &Config, store: &Store) -> Result<()> {
@@ -120,7 +117,7 @@ fn report(plan: &Plan) {
 }
 
 fn rules_check(paths: &Paths, store: &Store) -> Result<()> {
-    let rules = scan::load_rules(paths)?;
+    let rules = scan::load_rules(paths).context("run `tidyward init` first")?;
     let used: HashSet<String> = match latest_plan(store) {
         Ok((_, p)) => p.items.iter().filter_map(|i| i.decision.rule.clone()).collect(),
         Err(_) => HashSet::new(),
@@ -148,16 +145,14 @@ fn key(cfg: &Config, cmd: KeyCmd) -> Result<()> {
             if k.is_empty() {
                 bail!("no key given");
             }
-            keyring::Entry::new("tidyward", p.name())?.set_password(k)?;
+            config::set_key(p, k)?;
             println!("Stored in the keychain (service \"tidyward\", account \"{}\").", p.name());
         }
         KeyCmd::Status => {
-            if let Some(v) = p.key_env().iter().find(|v| std::env::var(v).map(|x| !x.is_empty()).unwrap_or(false)) {
-                println!("{}: key from the environment variable {v}", p.name());
-            } else if keyring::Entry::new("tidyward", p.name())?.get_password().is_ok() {
-                println!("{}: key from the keychain", p.name());
-            } else {
-                println!("{}: no key. Run `tidyward key set`, or set {}.", p.name(), p.key_env().join(" or "));
+            match config::key_source(p) {
+                KeySource::Env(v) => println!("{}: key from the environment variable {v}", p.name()),
+                KeySource::Keychain => println!("{}: key from the keychain", p.name()),
+                KeySource::Missing => println!("{}: no key. Run `tidyward key set`, or set {}.", p.name(), p.key_env().join(" or ")),
             }
         }
     }
@@ -187,7 +182,23 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Scan { folders, full } => {
             let folders = if folders.is_empty() { cfg.folders.clone() } else { folders };
-            scan::run(&cfg, &paths, &store, &folders, full)?;
+            for r in scan::run(&cfg, &paths, &store, &folders, full).context("run `tidyward init` first if this is new")? {
+                let t = &r.totals;
+                println!(
+                    "{}: {} items ({} unchanged, {} moved, {} new or changed)",
+                    r.plan.folder.display(),
+                    t.items,
+                    t.unchanged,
+                    t.moved,
+                    t.new_items()
+                );
+                println!(
+                    "  identify: {} locally, {} by the model;  rules: {} questions asked, {} answers from memory",
+                    t.local, t.identify_items, t.rule_questions, t.reused_answers
+                );
+                println!("  model: {} calls, {} input tokens (${:.4})", t.calls, t.tokens, t.tokens as f64 / 1e6 * cfg.price_per_million);
+                show::summary(&r.plan);
+            }
             println!("\n`tidyward plan` shows the details; `tidyward apply` carries it out after asking.");
         }
         Cmd::Plan => show::full(&latest_plan(&store)?.1),

@@ -4,8 +4,8 @@
 //! Trash. Items that changed since the plan was made are skipped. Every operation is logged
 //! with its source and destination before it is reported, so `undo` can reverse it.
 
-use crate::config::{Config, expand};
-use crate::scan::{Plan, PlanItem};
+use tidyward::config::{Config, expand};
+use tidyward::{Outcome, Plan, PlanItem, apply_item};
 use crate::show::{groups, human};
 use anyhow::{Result, bail};
 use std::io::{BufRead, Write};
@@ -21,57 +21,41 @@ fn confirm(prompt: &str) -> bool {
     matches!(line.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
-/// The item is still what the plan saw: same size and modification time.
-fn unchanged(it: &PlanItem) -> bool {
-    let Ok(md) = std::fs::metadata(&it.path) else { return false };
-    let mtime = md.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64);
-    let size_ok = md.is_dir() || md.len() == it.size;
-    let mtime_ok = mtime.map(|m| it.fingerprint.split(':').nth(1) == Some(&m.to_string())).unwrap_or(false);
-    size_ok && mtime_ok
-}
-
 pub fn apply(cfg: &Config, store: &Store, plan: &Plan, plan_id: i64) -> Result<()> {
-    let root = expand(&cfg.archive_root);
     let mut done = 0;
     let mut skipped = 0;
+    let mut one = |it: &PlanItem| -> Result<()> {
+        match apply_item(cfg, store, plan_id, it, None)? {
+            Outcome::Done { .. } => done += 1,
+            Outcome::Changed => {
+                println!("  skipped (changed since the plan): {}", it.name);
+                skipped += 1;
+            }
+            Outcome::Nothing => {}
+        }
+        Ok(())
+    };
     for ((_, name), items) in groups(plan) {
-        let action = &items[0].decision.action;
-        match action {
+        match &items[0].decision.action {
             Action::Keep | Action::Ask => continue,
             Action::Archive(dir) => {
-                let dest = root.join(dir);
+                let dest = expand(&cfg.archive_root).join(dir);
                 println!("\n{name}: {} items, {}", items.len(), human(items.iter().map(|i| i.size).sum()));
                 for it in &items {
                     println!("  {}", it.name);
                 }
-                if !confirm(&format!("Move these {} items to {}?", items.len(), dest.display())) {
-                    continue;
-                }
-                for it in items {
-                    if !unchanged(it) {
-                        println!("  skipped (changed since the plan): {}", it.name);
-                        skipped += 1;
-                        continue;
+                if confirm(&format!("Move these {} items to {}?", items.len(), dest.display())) {
+                    for it in items {
+                        one(it)?;
                     }
-                    let to = tidyward_exec::move_into(&it.path, &dest)?;
-                    store.log_operation(Some(plan_id), chrono::Utc::now().timestamp(), "move", &it.path, &to)?;
-                    done += 1;
                 }
             }
             Action::Trash => {
                 println!("\n{name}: {} items, {}. Each one is confirmed on its own.", items.len(), human(items.iter().map(|i| i.size).sum()));
                 for it in items {
-                    if !confirm(&format!("  Move to the Trash: {} ({}, {})?", it.name, human(it.size), it.decision.why)) {
-                        continue;
+                    if confirm(&format!("  Move to the Trash: {} ({}, {})?", it.name, human(it.size), it.decision.why)) {
+                        one(it)?;
                     }
-                    if !unchanged(it) {
-                        println!("  skipped (changed since the plan): {}", it.name);
-                        skipped += 1;
-                        continue;
-                    }
-                    let to = tidyward_exec::trash(&it.path)?;
-                    store.log_operation(Some(plan_id), chrono::Utc::now().timestamp(), "trash", &it.path, &to)?;
-                    done += 1;
                 }
             }
         }
@@ -80,36 +64,29 @@ pub fn apply(cfg: &Config, store: &Store, plan: &Plan, plan_id: i64) -> Result<(
     Ok(())
 }
 
-/// Undo one operation by id, or every not-yet-undone operation of the newest plan that has any.
 pub fn undo(store: &Store, id: Option<i64>) -> Result<()> {
     let ops = store.operations(100_000)?;
-    let todo: Vec<_> = match id {
-        Some(id) => ops.into_iter().filter(|o| o.id == id).collect(),
-        None => {
-            let Some(last) = ops.iter().find(|o| !o.undone) else { bail!("nothing to undo") };
-            let plan = last.plan_id;
-            ops.into_iter().filter(|o| !o.undone && o.plan_id == plan).collect()
-        }
-    };
-    if todo.is_empty() {
-        bail!("no such operation");
-    }
-    let mut ok = 0;
-    for op in todo {
-        if op.undone {
-            println!("  already undone: #{}", op.id);
-            continue;
-        }
-        match tidyward_exec::restore(&op.dst, &op.src) {
-            Ok(()) => {
-                store.mark_undone(op.id)?;
-                println!("  #{} {} → back to {}", op.id, op.action, op.src.display());
-                ok += 1;
+    if let Some(id) = id {
+        match ops.iter().find(|o| o.id == id) {
+            None => bail!("no such operation"),
+            Some(o) if o.undone => {
+                println!("  already undone: #{id}");
+                return Ok(());
             }
-            Err(e) => println!("  #{} not undone: {e}", op.id),
+            _ => {}
         }
     }
-    println!("{ok} operations undone.");
+    let r = tidyward::undo(store, id)?;
+    if r.undone.is_empty() && r.failed.is_empty() {
+        bail!("nothing to undo");
+    }
+    for op in ops.iter().filter(|o| r.undone.contains(&o.id)) {
+        println!("  #{} {} → back to {}", op.id, op.action, op.src.display());
+    }
+    for (id, e) in &r.failed {
+        println!("  #{id} not undone: {e}");
+    }
+    println!("{} operations undone.", r.undone.len());
     Ok(())
 }
 

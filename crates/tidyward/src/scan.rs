@@ -1,5 +1,5 @@
-//! `tidyward scan`: scan → identify → rules → plan, with the file memory so unchanged files are
-//! not sent again. Nothing is moved here; the plan is saved for `tidyward apply`.
+//! Scan → identify → rules → plan, with the file memory so unchanged files are not sent again.
+//! Nothing is moved here; the plan is saved for [`crate::apply`].
 
 use crate::config::{Config, Paths, api_key, expand};
 use anyhow::{Context, Result};
@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use tidyward_core::engine::{self, Decision};
 use tidyward_core::identify::{self, Identity, Purpose};
 use tidyward_core::state::{self, StateOptions};
-use tidyward_core::{Item, Rule, mask, rules};
+use tidyward_core::rules::Filter;
+use tidyward_core::{Action, Item, Rule, mask, rules};
 use tidyward_jev::{Answer, CallStat, Client, Job};
 use tidyward_store::{Store, UsageRow};
 
@@ -21,14 +22,23 @@ pub struct PlanItem {
     pub masked: String,
     pub size: u64,
     pub fingerprint: String,
+    /// When it arrived here (Unix seconds) and when it was last opened, if ever.
+    #[serde(default)]
+    pub arrived: i64,
+    #[serde(default)]
+    pub last_used: Option<i64>,
     pub identity: Identity,
     pub decision: Decision,
 }
 
+/// A rule as the plan used it. `text` is the English description; apps can build their own
+/// wording from `action`, `cond` and `exact`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanRule {
     pub id: String,
-    pub action: String,
+    pub action: Action,
+    pub cond: String,
+    pub exact: Vec<Filter>,
     pub text: String,
 }
 
@@ -41,6 +51,7 @@ pub struct Plan {
     pub items: Vec<PlanItem>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Totals {
     pub items: usize,
     pub unchanged: usize,
@@ -53,6 +64,19 @@ pub struct Totals {
     pub tokens: u64,
 }
 
+impl Totals {
+    pub fn new_items(&self) -> usize {
+        self.items - self.unchanged - self.moved
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    pub plan_id: i64,
+    pub plan: Plan,
+    pub totals: Totals,
+}
+
 const IDENTIFY_NOTE: &str = "Each key below is one item from a person's {place}, described by metadata only and a masked file name.";
 const RULES_NOTE: &str = "Each key below is one item from a person's {place}, described by metadata and a masked file name. \
                           Answer each question only about the item it names.";
@@ -60,7 +84,7 @@ const RULES_NOTE: &str = "Each key below is one item from a person's {place}, de
 pub fn load_rules(paths: &Paths) -> Result<Vec<Rule>> {
     let path = paths.rules();
     let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("no rules at {}; run `tidyward init`", path.display()))?;
+        .with_context(|| format!("no rules at {}", path.display()))?;
     Ok(rules::parse(&text)?)
 }
 
@@ -109,7 +133,7 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
     let mut lazy = LazyClient { cfg, client: None };
     let provider = cfg.provider()?.name();
 
-    let mut t = Totals { items: items.len(), unchanged: 0, moved: 0, local: 0, identify_items: 0, rule_questions: 0, reused_answers: 0, calls: 0, tokens: 0 };
+    let mut t = Totals { items: items.len(), ..Default::default() };
     let masked: Vec<String> = items.iter().map(|i| mask::mask(&i.name, today)).collect();
     let keys: Vec<String> = (1..=items.len()).map(|n| format!("F{n:04}")).collect();
     let states: Vec<Map<String, Value>> = items.iter().zip(&masked).map(|(i, m)| state::build(i, m, &opts)).collect();
@@ -209,6 +233,8 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
             masked: masked[i].clone(),
             size: item.size,
             fingerprint: item.fingerprint(),
+            arrived: item.arrived(),
+            last_used: item.last_used,
             identity: identities[i].clone(),
             decision: engine::decide(&cands_all[i], &semantic[i], cfg.hit, cfg.weak),
         })
@@ -217,42 +243,42 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
         created: now,
         folder: folder.to_path_buf(),
         run: run.into(),
-        rules: rules.iter().map(|r| PlanRule { id: r.id.clone(), action: r.action.to_string(), text: r.describe() }).collect(),
+        rules: rules
+            .iter()
+            .map(|r| PlanRule { id: r.id.clone(), action: r.action.clone(), cond: r.cond.clone(), exact: r.exact.clone(), text: r.describe() })
+            .collect(),
         items: plan_items,
     };
     Ok((plan, t))
 }
 
-pub fn run(cfg: &Config, paths: &Paths, store: &Store, folders: &[String], full: bool) -> Result<Vec<(Plan, i64)>> {
+/// Scan each folder and save one plan per folder.
+pub fn run(cfg: &Config, paths: &Paths, store: &Store, folders: &[String], full: bool) -> Result<Vec<ScanResult>> {
     let run = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let mut out = Vec::new();
     for f in folders {
         let folder = expand(f);
         let key = format!("{run} {}", folder.display());
-        let (plan, t) = scan_folder(cfg, paths, store, &folder, full, &key)?;
-        let new_items = t.items - t.unchanged - t.moved;
-        store.log_run(&key, plan.created, t.items as i64, new_items as i64, full)?;
-        let id = store.save_plan(plan.created, &folder, &serde_json::to_string(&plan)?)?;
-        println!(
-            "{}: {} items ({} unchanged, {} moved, {} new or changed)",
-            folder.display(),
-            t.items,
-            t.unchanged,
-            t.moved,
-            new_items
-        );
-        println!(
-            "  identify: {} locally, {} by the model;  rules: {} questions asked, {} answers from memory",
-            t.local, t.identify_items, t.rule_questions, t.reused_answers
-        );
-        println!(
-            "  model: {} calls, {} input tokens (${:.4})",
-            t.calls,
-            t.tokens,
-            t.tokens as f64 / 1e6 * cfg.price_per_million
-        );
-        crate::show::summary(&plan);
-        out.push((plan, id));
+        let (plan, totals) = scan_folder(cfg, paths, store, &folder, full, &key)?;
+        store.log_run(&key, plan.created, totals.items as i64, totals.new_items() as i64, full)?;
+        let plan_id = store.save_plan(plan.created, &folder, &serde_json::to_string(&plan)?)?;
+        out.push(ScanResult { plan_id, plan, totals });
+    }
+    Ok(out)
+}
+
+/// The newest plan, with its id.
+pub fn latest_plan(store: &Store) -> Result<Option<(i64, Plan)>> {
+    store.latest_plan()?.map(|(id, _, _, body)| Ok((id, serde_json::from_str(&body)?))).transpose()
+}
+
+/// The newest plan for each folder that has one, in the order given.
+pub fn latest_plans(store: &Store, folders: &[String]) -> Result<Vec<(i64, Plan)>> {
+    let mut out = Vec::new();
+    for f in folders {
+        if let Some((id, _, _, body)) = store.latest_plan_for(&expand(f))? {
+            out.push((id, serde_json::from_str(&body)?));
+        }
     }
     Ok(out)
 }

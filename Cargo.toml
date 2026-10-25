@@ -15,6 +15,7 @@ tidyward-platform = { path = "crates/tidyward-platform" }
 tidyward-store = { path = "crates/tidyward-store" }
 tidyward-jev = { path = "crates/tidyward-jev" }
 tidyward-exec = { path = "crates/tidyward-exec" }
+tidyward = { path = "crates/tidyward" }
 anyhow = "1"
 chrono = "0.4"
 unicode-normalization = "0.1"

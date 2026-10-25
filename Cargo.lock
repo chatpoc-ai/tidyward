@@ -1815,6 +1815,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tidyward"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs",
+ "keyring",
+ "serde",
+ "serde_json",
+ "tidyward-core",
+ "tidyward-exec",
+ "tidyward-jev",
+ "tidyward-platform",
+ "tidyward-store",
+ "toml",
+]
+
+[[package]]
 name = "tidyward-cli"
 version = "0.1.0"
 dependencies = [
@@ -1826,6 +1844,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tidyward",
  "tidyward-core",
  "tidyward-exec",
  "tidyward-jev",
