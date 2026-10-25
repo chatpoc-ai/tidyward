@@ -176,7 +176,8 @@ fn main() -> Result<()> {
         for m in made {
             println!("Created {}", m.display());
         }
-        println!("Edit rules.txt to your habits, then run `tidyward key set` and `tidyward scan`.");
+        println!("\nrules.txt starts with a short, careful set of rules; change it to your habits any time.");
+        println!("Next: `tidyward key set`, then `tidyward scan` and `tidyward plan` (nothing is moved until `tidyward apply`).");
         return Ok(());
     }
     if let Cmd::Key { cmd } = cli.cmd {

@@ -1,4 +1,4 @@
-# Tidyward rules: one per line
+# More example rules for Tidyward. Copy the lines you want into your rules.txt.
 #
 #   action | semantic condition | exact conditions
 #

@@ -48,7 +48,7 @@ tidyward key set           # store the provider key in the keychain
 tidyward key status        # where the key would come from (never printed)
 tidyward history           # recent operations
 tidyward report            # what is in the folder, what the plan proposes, the largest items
-tidyward init              # create config.toml and rules.txt
+tidyward init              # create config.toml and rules.txt (from rules/starter.txt)
 ```
 
 ## Testing

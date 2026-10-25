@@ -1,0 +1,31 @@
+# Tidyward starter rules: a short, careful set to try first.
+# `tidyward init` copies this file to rules.txt in your data folder; edit that copy.
+#
+# Each line:   action | what the file is | exact conditions
+#
+#   action             keep, trash, ask, or archive:<folder> (inside your home folder)
+#   what the file is   plain language, judged by the model; * means any file
+#   exact conditions   optional, checked on your Mac, comma-separated, all must hold
+#
+# The first rule that applies wins, so protective rules come first.
+# Nothing happens until `tidyward apply`, and it asks before every change.
+# More ideas: rules/more-examples.txt in the Tidyward repository.
+
+# 1. Protect: always leave these to you
+ask                         | passwords, keys, recovery codes or backup codes |
+ask                         | a passport, ID card or other identity document  |
+
+# 2. Anything recent stays where it is
+keep                        | *                                               | arrived<7 days
+keep                        | *                                               | opened<7 days
+
+# 3. Clean up
+trash                       | a screenshot                                    | arrived>30 days, never opened
+trash                       | *                                               | extension=.dmg/.pkg, app installed
+trash                       | *                                               | has duplicate
+
+# 4. Organize
+archive:Documents/Receipts  | an invoice, receipt or bill                     |
+
+# 5. Everything else stays where it is
+keep                        | *                                               |

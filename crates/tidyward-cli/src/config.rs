@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tidyward_jev::Provider;
 
-pub const EXAMPLE_RULES: &str = include_str!("../../../rules.example.txt");
+pub const STARTER_RULES: &str = include_str!("../../../rules/starter.txt");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -106,7 +106,7 @@ pub fn init(paths: &Paths) -> Result<Vec<PathBuf>> {
         made.push(paths.config());
     }
     if !paths.rules().exists() {
-        fs::write(paths.rules(), EXAMPLE_RULES)?;
+        fs::write(paths.rules(), STARTER_RULES)?;
         made.push(paths.rules());
     }
     Ok(made)
@@ -125,4 +125,13 @@ pub fn api_key(p: Provider) -> Result<String> {
     entry.get_password().map_err(|_| {
         anyhow!("no {} key: run `tidyward key set`, or set {}", p.name(), p.key_env().join(" or "))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn shipped_rules_parse() {
+        tidyward_core::rules::parse(super::STARTER_RULES).unwrap();
+        tidyward_core::rules::parse(include_str!("../../../rules/more-examples.txt")).unwrap();
+    }
 }
