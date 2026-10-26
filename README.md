@@ -16,7 +16,7 @@ Each part does what it is best at:
 1. **Identify locally first.** The system already knows a lot about each file: camera model, screenshot flag, pixel size, the app that made it, and the content type (via [Google Magika](https://github.com/google/magika)). Only files that are still unclear go to the model.
 2. **Exact conditions in code.** Age, size, extension, duplicates and file-name patterns are checked locally, with exact numbers.
 3. **The model only answers semantic questions,** such as "is this an invoice?" or "is this an ID document?". It returns calibrated yes/no probabilities. Tidyward uses [Jev](https://typesafe.ai), a fast decision model.
-4. **Your rules decide.** The model never chooses an action. Your rules turn its answers into a plan, and weak or missing matches are left to you.
+4. **Your rules decide.** The model never chooses an action. Your rules turn its answers into a plan. When the model is unsure, the file stays where it is.
 
 See [docs/design.md](docs/design.md) for the details.
 
@@ -79,7 +79,7 @@ The plan is grouped into **trash**, **ask you**, **archive → folder** and **ke
   Invoice_Acme_2025-09.pdf                  88 KB  R008 (0.98) an invoice, receipt or bill [model]
 ```
 
-The number in brackets is how sure it is. "ask you" means Tidyward will not touch the file: either a protective rule matched, or it was not sure enough.
+The number in brackets is how sure it is. "ask you" means a protective rule matched clearly, so the file is yours to decide. When the model is unsure, the file is kept where it is and marked unsure.
 
 The first scan asks about every file; later scans only ask about new or changed files. A Downloads folder of about 200 files costs under one cent the first time. `tidyward scan --full` asks about everything again.
 
@@ -150,7 +150,7 @@ Start with the [starter rules](rules/starter.txt), look at the plan, and adjust.
 | `archive_root` | `"~"` | Where `archive:` folders are created |
 | `send_domain` | `true` | Send the domain a file was downloaded from (domain only) |
 | `magika` | `true` | Use Magika when it is installed |
-| `hit`, `weak` | `0.7`, `0.4` | Confidence for a rule to apply; between the two, the file is left to you |
+| `hit`, `weak` | `0.7`, `0.4` | Confidence for a rule to apply; between the two, the file stays where it is |
 | `batch` | `40` | Files per model call |
 
 ## License

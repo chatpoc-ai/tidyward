@@ -13,7 +13,7 @@
 
 # 1. Protect: always leave these to you
 ask                         | passwords, keys, recovery codes or backup codes |
-ask                         | a passport, ID card or other identity document  |
+ask                         | a photo or scan of a passport, ID card or driver's licence |
 
 # 2. Anything recent stays where it is
 keep                        | *                                               | arrived<7 days

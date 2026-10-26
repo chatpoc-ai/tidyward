@@ -17,7 +17,7 @@ This document describes how Tidyward decides what to suggest, and exactly what l
               model     what is this? (only for files still unclear)
 3. rules      local     exact conditions: age, size, extension, duplicates, name
               model     semantic conditions: "an invoice", "an ID document" ...
-4. plan       local     first rule that applies wins; weak or no match → ask you
+4. plan       local     first rule that applies wins; an unsure match leaves the file where it is
 5. confirm    you
 6. execute    local     move / Trash, logged, undoable
 ```
@@ -69,7 +69,7 @@ Evaluation goes in two steps:
 1. **Local.** Check the exact conditions of every rule and drop the rules that fail. If the first rule left standing has no semantic condition, local code decides and the model is not asked.
 2. **Model.** Ask only the semantic conditions of the rules still standing before that point. Each condition is a yes/no question, and the model returns a probability.
 
-A semantic condition counts as matched at probability ≥ 0.7. If the first candidate is between 0.4 and 0.7, or no rule applies, the item is left to you.
+A semantic condition counts as matched at probability ≥ 0.7. If the first candidate is between 0.4 and 0.7, the item stays where it is, marked as unsure: nothing moves on a guess. A strong match on an `ask` rule, or no rule at all, leaves the item to you.
 
 Why yes/no questions instead of "pick a rule": a decision model asked to choose rarely picks "none of these". A yes/no question per rule lets "nothing applies" emerge naturally.
 

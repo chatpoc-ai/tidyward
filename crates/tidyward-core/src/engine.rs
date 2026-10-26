@@ -41,7 +41,7 @@ pub struct Decision {
     /// How sure the deciding rule is: 1 for exact-only rules, else the model's probability.
     #[serde(default)]
     pub probability: f64,
-    /// A rule matched only weakly (between `weak` and `hit`), so the item is left to the person.
+    /// A rule matched only weakly (between `weak` and `hit`), so the item is left where it is.
     #[serde(default)]
     pub weak: bool,
 }
@@ -75,8 +75,10 @@ pub fn decide(cands: &[&Rule], sem: &HashMap<String, f64>, hit: f64, weak: f64) 
     let also_hit = hits.into_iter().filter(|h| h != &first.id).collect();
     let decided_by = if first.cond.is_empty() { DecidedBy::Code } else { DecidedBy::Model };
     if prob < hit {
+        // Unsure: leave the file where it is rather than ask. Nothing is moved on a guess, and
+        // "ask" stays for files that clearly need the person (a strong match on an ask rule).
         return Decision {
-            action: Action::Ask,
+            action: Action::Keep,
             rule: Some(first.id.clone()),
             why: format!("weak match {} ({prob:.2})", first.id),
             decided_by,
@@ -138,7 +140,7 @@ archive:Docs | a document             |
     }
 
     #[test]
-    fn protection_first_and_weak_goes_to_user() {
+    fn protection_first_and_unsure_stays_put() {
         let r = parse(RULES).unwrap();
         let mut i = item("x.png");
         i.added = Some(0);
@@ -154,8 +156,10 @@ archive:Docs | a document             |
         assert_eq!(ask(0.9, 0.95).action, Action::Ask, "protective rule wins");
         assert_eq!(ask(0.1, 0.95).action, Action::Trash);
         let weak = ask(0.1, 0.5);
-        assert_eq!(weak.action, Action::Ask);
+        assert_eq!((weak.action, weak.weak), (Action::Keep, true), "unsure: nothing moves");
         assert!(weak.why.starts_with("weak match R002"));
+        let unsure_pw = ask(0.5, 0.95);
+        assert_eq!((unsure_pw.action, unsure_pw.weak), (Action::Keep, true), "an unsure ask rule does not ask either");
         assert_eq!(ask(0.1, 0.1).why, "no rule applies");
     }
 

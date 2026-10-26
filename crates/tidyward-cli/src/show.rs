@@ -48,7 +48,7 @@ fn why(plan: &Plan, it: &PlanItem) -> String {
         DecidedBy::Model => "model",
         DecidedBy::None => "-",
     };
-    match (d.action == Action::Ask && d.why.starts_with("weak"), rule_text) {
+    match (d.weak, rule_text) {
         (false, Some(t)) if d.why != "no rule applies" => format!("{} {t} [{by}]", d.why),
         _ => format!("{} [{by}]", d.why),
     }

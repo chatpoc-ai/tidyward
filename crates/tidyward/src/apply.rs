@@ -34,8 +34,10 @@ pub fn unchanged(it: &PlanItem) -> bool {
 }
 
 /// Carry out the plan's action for one item. `action` overrides the plan's own (an app may let
-/// the person pick a different one); archive folders are relative to `archive_root`.
-pub fn apply_item(cfg: &Config, store: &Store, plan_id: i64, it: &PlanItem, action: Option<&Action>) -> Result<Outcome> {
+/// the person pick a different one); archive folders are relative to `archive_root`. `rename`
+/// gives an archived item a new name (without extension; the extension never changes). Undo
+/// puts it back under its old name, since the log holds both paths.
+pub fn apply_item(cfg: &Config, store: &Store, plan_id: i64, it: &PlanItem, action: Option<&Action>, rename: Option<&str>) -> Result<Outcome> {
     let action = action.unwrap_or(&it.decision.action);
     if matches!(action, Action::Keep | Action::Ask) {
         return Ok(Outcome::Nothing);
@@ -45,7 +47,7 @@ pub fn apply_item(cfg: &Config, store: &Store, plan_id: i64, it: &PlanItem, acti
     }
     let now = chrono::Utc::now().timestamp();
     let (kind, to) = match action {
-        Action::Archive(dir) => ("move", tidyward_exec::move_into(&it.path, &expand(&cfg.archive_root).join(dir))?),
+        Action::Archive(dir) => ("move", tidyward_exec::move_into_as(&it.path, &expand(&cfg.archive_root).join(dir), rename)?),
         Action::Trash => ("trash", tidyward_exec::trash(&it.path)?),
         Action::Keep | Action::Ask => unreachable!(),
     };

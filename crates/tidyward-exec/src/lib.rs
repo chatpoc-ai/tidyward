@@ -1,6 +1,7 @@
 //! Execution: the only code that changes files. Two operations, both reversible:
 //!
-//! - [`move_into`]: move into a folder, never overwriting (a name clash gets " (2)", " (3)", ...).
+//! - [`move_into`]: move into a folder, never overwriting (a name clash gets " (2)", " (3)", ...),
+//!   optionally under a new name ([`move_into_as`]); the extension never changes.
 //! - [`trash`]: move to the system Trash, never a hard delete. Returns where the item landed in
 //!   the Trash, so [`restore`] can put it back.
 //!
@@ -28,11 +29,32 @@ pub fn free_name(dir: &Path, name: &str) -> PathBuf {
 
 /// Move `src` into `dest_dir` (created if needed). Returns the new path.
 pub fn move_into(src: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    move_into_as(src, dest_dir, None)
+}
+
+/// A new name for `src`: `stem` plus the original extension. Refuses names that would leave the
+/// folder or hide the file (path separators, a leading dot, empty).
+pub fn renamed(src: &Path, stem: &str) -> Result<String> {
+    let stem = stem.trim();
+    if stem.is_empty() || stem.starts_with('.') || stem.contains(['/', ':', '\\', '\0']) {
+        bail!("not a usable file name: {stem:?}");
+    }
+    Ok(match src.extension() {
+        Some(ext) if src.is_file() => format!("{stem}.{}", ext.to_string_lossy()),
+        _ => stem.to_string(),
+    })
+}
+
+/// Like [`move_into`], under the new name `stem` (the extension stays) when given.
+pub fn move_into_as(src: &Path, dest_dir: &Path, stem: Option<&str>) -> Result<PathBuf> {
     if !src.exists() {
         bail!("{} no longer exists", src.display());
     }
+    let name = match stem {
+        Some(s) => renamed(src, s)?,
+        None => src.file_name().context("no file name")?.to_string_lossy().into_owned(),
+    };
     fs::create_dir_all(dest_dir).with_context(|| format!("cannot create {}", dest_dir.display()))?;
-    let name = src.file_name().context("no file name")?.to_string_lossy();
     let dst = free_name(dest_dir, &name);
     fs::rename(src, &dst).with_context(|| format!("cannot move {} to {}", src.display(), dst.display()))?;
     Ok(dst)
@@ -79,6 +101,18 @@ pub fn restore(from: &Path, to: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rename_keeps_the_extension_and_undoes() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("Screenshot 2025-03-02 at 10.14.55.png");
+        fs::write(&src, b"x").unwrap();
+        assert!(renamed(&src, "../x").is_err() && renamed(&src, ".hidden").is_err() && renamed(&src, " ").is_err());
+        let dst = move_into_as(&src, &t.path().join("Shots"), Some("2025-03-02 Screenshot")).unwrap();
+        assert_eq!(dst.file_name().unwrap(), "2025-03-02 Screenshot.png");
+        restore(&dst, &src).unwrap();
+        assert!(src.exists() && !dst.exists(), "undo brings back the old name");
+    }
 
     #[test]
     fn move_never_overwrites_and_restores() {

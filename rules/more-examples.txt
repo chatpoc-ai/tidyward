@@ -15,7 +15,7 @@
 
 # --- protect first: never cleaned up automatically ---
 ask                          | passwords, keys, recovery codes or backup codes |
-ask                          | a passport, ID card, visa or driver's licence   |
+ask                          | a photo or scan of a passport, ID card, visa or driver's licence   |
 archive:Documents/Finance    | an invoice, receipt, bill or bank statement     |
 archive:Documents/Insurance  | an insurance policy, benefits booklet or claim  |
 archive:Documents/Forms      | a filled-in or signed application or claim form |

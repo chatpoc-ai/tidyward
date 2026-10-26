@@ -25,7 +25,7 @@ pub fn apply(cfg: &Config, store: &Store, plan: &Plan, plan_id: i64) -> Result<(
     let mut done = 0;
     let mut skipped = 0;
     let mut one = |it: &PlanItem| -> Result<()> {
-        match apply_item(cfg, store, plan_id, it, None)? {
+        match apply_item(cfg, store, plan_id, it, None, None)? {
             Outcome::Done { .. } => done += 1,
             Outcome::Changed => {
                 println!("  skipped (changed since the plan): {}", it.name);
