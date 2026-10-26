@@ -49,6 +49,8 @@ Tidyward has no server and no account of its own. Sign up with one of these prov
 - [TypeSafe](https://typesafe.ai) (direct; the default), or
 - [Vercel AI Gateway](https://vercel.com/ai-gateway) (set `provider = "vercel"` in `config.toml`).
 
+No key yet? Set `provider = "local"` in `config.toml` to use Tidyward with no model at all. Exact conditions work as usual, and "what it is" conditions are answered on your Mac where it can tell: the screenshot flag, a camera, the file type, or telling words in the name (invoice, 发票, 請求書, passport, …). Anything it can't tell is left where it is.
+
 ### 3. Set up
 
 ```bash
@@ -146,7 +148,7 @@ Start with the [starter rules](rules/starter.txt), look at the plan, and adjust.
 | Setting | Default | Meaning |
 |---|---|---|
 | `folders` | `["~/Downloads"]` | Folders to scan |
-| `provider` | `"typesafe"` | `"typesafe"` or `"vercel"` |
+| `provider` | `"typesafe"` | `"typesafe"`, `"vercel"`, or `"local"` (no model) |
 | `archive_root` | `"~"` | Where `archive:` folders are created |
 | `send_domain` | `true` | Send the domain a file was downloaded from (domain only) |
 | `magika` | `true` | Use Magika when it is installed |

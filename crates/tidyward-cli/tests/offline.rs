@@ -73,3 +73,32 @@ fn scan_remember_apply_skip_undo() {
     let declined = tidyward(&home, &["apply"], "n\nn\nn\n");
     assert!(declined.contains("0 items moved"), "{declined}");
 }
+
+#[test]
+fn local_only_mode_needs_no_key() {
+    let t = tempfile::tempdir().unwrap();
+    let (home, inbox, root) = (t.path().join("home"), t.path().join("Inbox"), t.path().join("root"));
+    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(&inbox).unwrap();
+    fs::write(inbox.join("Invoice_Acme_2025-09.pdf"), b"%PDF").unwrap();
+    fs::write(inbox.join("notes.pdf"), b"%PDF").unwrap();
+    fs::write(inbox.join("clip.mov"), b"mov").unwrap();
+    fs::write(
+        home.join("rules.txt"),
+        "archive:Receipts | an invoice, receipt or bill |\narchive:Video | a video |\nkeep | * |\n",
+    )
+    .unwrap();
+    fs::write(
+        home.join("config.toml"),
+        format!("provider = \"local\"\nfolders = [{:?}]\narchive_root = {:?}\nmagika = false\n", inbox, root),
+    )
+    .unwrap();
+    let scan = tidyward(&home, &["scan"], "");
+    assert!(scan.contains("model: 0 calls"), "{scan}");
+    let plan = tidyward(&home, &["plan"], "");
+    // the name says invoice and the type says video: settled on this Mac; notes.pdf is left alone
+    assert!(plan.contains("archive → Receipts") && plan.contains("Invoice_Acme_2025-09.pdf"), "{plan}");
+    assert!(plan.contains("archive → Video") && plan.contains("[this Mac]"), "{plan}");
+    let keep = plan.split("## keep").nth(1).unwrap_or_default();
+    assert!(keep.contains("notes.pdf"), "{plan}");
+}

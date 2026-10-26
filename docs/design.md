@@ -98,6 +98,10 @@ Only words, never raw values, because decision models read bucketed words better
 
 The path, the real name, the contents and the exact app name and version are never sent.
 
+### Local-only mode
+
+With `provider = "local"` nothing is sent anywhere. Items the system cannot identify stay unidentified (and are not remembered, so a model can identify them later). A "what it is" condition is matched to topics by its words; each topic answers from hard signals (screenshot flag, camera, file type) or from telling words in the real name, read on the Mac. A name can say yes but never no. Unanswered conditions never make a rule apply, so nothing moves on a guess; the plan counts how many items only a model could judge. Decisions settled this way are marked "this Mac" instead of the model.
+
 ### Masking
 
 Generic words that say what kind of file something is (IMG, Screenshot, Invoice, Resume, contract, setup, arm64, backup, recovery) are kept, in English, French, Simplified and Traditional Chinese, Japanese and Korean. The word lists are plain text files in [`crates/tidyward-core/words/`](../crates/tidyward-core/words), one per language. Names are normalized to NFC first (macOS names can be decomposed), and Latin words match ignoring case and accents. Everything else becomes a placeholder:

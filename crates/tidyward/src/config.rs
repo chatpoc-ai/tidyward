@@ -17,7 +17,7 @@ pub const STARTER_RULES: &str = include_str!("../../../rules/starter.txt");
 pub struct Config {
     /// Folders to tidy; `~` is the home folder.
     pub folders: Vec<String>,
-    /// "typesafe" or "vercel".
+    /// "typesafe", "vercel", or "local" for no model at all.
     pub provider: String,
     /// Items per model call (about 60 fit).
     pub batch: usize,
@@ -90,6 +90,12 @@ impl Config {
             Ok(t) => toml::from_str(&t).with_context(|| format!("bad {}", paths.config().display())),
             Err(_) => Ok(Config::default()),
         }
+    }
+
+    /// No model: "what it is" conditions are answered on this Mac where they can be
+    /// ([`tidyward_core::local`]), and left unanswered otherwise.
+    pub fn local_only(&self) -> bool {
+        self.provider == "local"
     }
 
     pub fn provider(&self) -> Result<Provider> {

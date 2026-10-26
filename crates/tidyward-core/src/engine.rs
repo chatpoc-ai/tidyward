@@ -26,6 +26,8 @@ pub enum DecidedBy {
     Code,
     /// A rule with a semantic part: the model's answer decided.
     Model,
+    /// A rule with a semantic part, answered on this Mac in local-only mode.
+    Local,
     /// No rule applied.
     None,
 }

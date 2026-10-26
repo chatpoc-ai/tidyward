@@ -46,6 +46,7 @@ fn why(plan: &Plan, it: &PlanItem) -> String {
     let by = match d.decided_by {
         DecidedBy::Code => "code",
         DecidedBy::Model => "model",
+        DecidedBy::Local => "this Mac",
         DecidedBy::None => "-",
     };
     match (d.weak, rule_text) {

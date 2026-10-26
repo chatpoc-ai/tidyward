@@ -9,6 +9,7 @@
 pub mod engine;
 pub mod identify;
 pub mod item;
+pub mod local;
 pub mod mask;
 pub mod rules;
 pub mod state;

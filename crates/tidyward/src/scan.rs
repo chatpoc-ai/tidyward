@@ -11,7 +11,7 @@ use tidyward_core::engine::{self, Decision};
 use tidyward_core::identify::{self, Identity, Purpose};
 use tidyward_core::state::{self, StateOptions};
 use tidyward_core::rules::Filter;
-use tidyward_core::{Action, Item, Rule, mask, rules};
+use tidyward_core::{Action, DecidedBy, Item, Rule, local, mask, rules};
 use tidyward_jev::{Answer, CallStat, Client, Job};
 use tidyward_store::{Store, UsageRow};
 
@@ -49,6 +49,12 @@ pub struct Plan {
     pub run: String,
     pub rules: Vec<PlanRule>,
     pub items: Vec<PlanItem>,
+    /// Made without a model (local-only mode).
+    #[serde(default)]
+    pub local_only: bool,
+    /// In local-only mode: items with a "what it is" condition that only a model could answer.
+    #[serde(default)]
+    pub needs_model: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -62,6 +68,8 @@ pub struct Totals {
     pub reused_answers: usize,
     pub calls: usize,
     pub tokens: u64,
+    /// Local-only mode: items with a condition only a model could answer.
+    pub needs_model: usize,
 }
 
 impl Totals {
@@ -131,7 +139,8 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
     let place = engine::place(label);
     let opts = StateOptions { folder: &folder_name, send_domain: cfg.send_domain, now };
     let mut lazy = LazyClient { cfg, client: None };
-    let provider = cfg.provider()?.name();
+    let local_only = cfg.local_only();
+    let provider = if local_only { "local" } else { cfg.provider()?.name() };
 
     let mut t = Totals { items: items.len(), ..Default::default() };
     let masked: Vec<String> = items.iter().map(|i| mask::mask(&i.name, today)).collect();
@@ -161,6 +170,10 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
                 identities[i] = Some(id);
                 t.local += 1;
             }
+            None if local_only => {
+                // not known without a model; not remembered, so a model can identify it later
+                identities[i] = Some(Identity { purpose: Purpose::Other, confidence: 0.0, source: "unknown".into(), reason: "needs a model".into() });
+            }
             None => {
                 let q: Map<String, Value> = serde_json::from_value(identify::purpose_question())?;
                 jobs.push(Job { key: keys[i].clone(), state: states[i].clone(), questions: q });
@@ -183,7 +196,7 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
     }
     let identities: Vec<Identity> = identities.into_iter().map(|i| i.expect("every item identified")).collect();
     for ((item, m), id) in items.iter().zip(&masked).zip(&identities) {
-        store.remember(item, m, Some(id))?;
+        store.remember(item, m, (id.source != "unknown").then_some(id))?;
     }
 
     // layers 2 and 3: exact conditions locally, then only the semantic ones still needed
@@ -191,11 +204,28 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
     let key_of: HashMap<&str, &str> = cond_keys.iter().map(|(k, c)| (k.as_str(), c.as_str())).collect();
     let mut cands_all = Vec::new();
     let mut jobs = Vec::new();
+    let mut local_answers: Vec<HashMap<String, f64>> = vec![HashMap::new(); items.len()];
     for (i, item) in items.iter().enumerate() {
         let cands = engine::candidates(&rules, item, now);
         let mut need = engine::needed(&cands);
         t.reused_answers += need.iter().filter(|c| remembered[i].semantic.contains_key(*c)).count();
         need.retain(|c| !remembered[i].semantic.contains_key(c));
+        if local_only {
+            // answered here or not at all; local answers are not remembered as model answers
+            let mut unanswered = false;
+            for c in &need {
+                match local::answer_condition(c, item, &identities[i]) {
+                    Some(p) => {
+                        local_answers[i].insert(c.clone(), p);
+                    }
+                    None => unanswered = true,
+                }
+            }
+            if unanswered {
+                t.needs_model += 1;
+            }
+            need.clear();
+        }
         if !need.is_empty() {
             let mut st = states[i].clone();
             st.insert("what it is (from a first pass)".into(), json!(identify::describe(&identities[i])));
@@ -205,6 +235,9 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
         cands_all.push(cands);
     }
     let mut semantic: Vec<HashMap<String, f64>> = remembered.iter().map(|r| r.semantic.clone()).collect();
+    for (s, l) in semantic.iter_mut().zip(&local_answers) {
+        s.extend(l.iter().map(|(k, v)| (k.clone(), *v)));
+    }
     if !jobs.is_empty() {
         let client = lazy.get()?;
         let (answers, stats) = client.ask_batched(&jobs, cfg.batch, &RULES_NOTE.replace("{place}", &place))?;
@@ -236,7 +269,15 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
             arrived: item.arrived(),
             last_used: item.last_used,
             identity: identities[i].clone(),
-            decision: engine::decide(&cands_all[i], &semantic[i], cfg.hit, cfg.weak),
+            decision: {
+                let mut d = engine::decide(&cands_all[i], &semantic[i], cfg.hit, cfg.weak);
+                // say so when this Mac, not the model, answered the deciding condition
+                let cond = d.rule.as_ref().and_then(|id| rules.iter().find(|r| &r.id == id)).map(|r| &r.cond);
+                if d.decided_by == DecidedBy::Model && cond.is_some_and(|c| local_answers[i].contains_key(c)) {
+                    d.decided_by = DecidedBy::Local;
+                }
+                d
+            },
         })
         .collect();
     let plan = Plan {
@@ -248,6 +289,8 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
             .map(|r| PlanRule { id: r.id.clone(), action: r.action.clone(), cond: r.cond.clone(), exact: r.exact.clone(), text: r.describe() })
             .collect(),
         items: plan_items,
+        local_only,
+        needs_model: t.needs_model,
     };
     Ok((plan, t))
 }
