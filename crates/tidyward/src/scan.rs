@@ -52,7 +52,7 @@ pub struct Plan {
     /// Made without a model (local-only mode).
     #[serde(default)]
     pub local_only: bool,
-    /// In local-only mode: items with a "what it is" condition that only a model could answer.
+    /// In local-only mode: items this Mac could not identify; a model could tell what they are.
     #[serde(default)]
     pub needs_model: usize,
 }
@@ -68,7 +68,7 @@ pub struct Totals {
     pub reused_answers: usize,
     pub calls: usize,
     pub tokens: u64,
-    /// Local-only mode: items with a condition only a model could answer.
+    /// Local-only mode: items this Mac could not identify.
     pub needs_model: usize,
 }
 
@@ -212,16 +212,12 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
         need.retain(|c| !remembered[i].semantic.contains_key(c));
         if local_only {
             // answered here or not at all; local answers are not remembered as model answers
-            let mut unanswered = false;
             for c in &need {
-                match local::answer_condition(c, item, &identities[i]) {
-                    Some(p) => {
-                        local_answers[i].insert(c.clone(), p);
-                    }
-                    None => unanswered = true,
+                if let Some(p) = local::answer_condition(c, item, &identities[i]) {
+                    local_answers[i].insert(c.clone(), p);
                 }
             }
-            if unanswered {
+            if identities[i].source == "unknown" {
                 t.needs_model += 1;
             }
             need.clear();
