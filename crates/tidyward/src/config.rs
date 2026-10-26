@@ -145,9 +145,26 @@ pub fn key_source(p: Provider) -> KeySource {
     }
 }
 
+/// Keys read from the keychain in this process. macOS may ask the person before an app reads
+/// the keychain; keeping the key after the first read means that happens once per launch at
+/// most, not on every scan or test.
+static KEYS: std::sync::Mutex<Vec<(&'static str, String)>> = std::sync::Mutex::new(Vec::new());
+
+fn cached(p: Provider) -> Option<String> {
+    KEYS.lock().ok()?.iter().find(|(n, _)| *n == p.name()).map(|(_, k)| k.clone())
+}
+
+fn remember(p: Provider, key: &str) {
+    if let Ok(mut keys) = KEYS.lock() {
+        keys.retain(|(n, _)| *n != p.name());
+        keys.push((p.name(), key.to_string()));
+    }
+}
+
 /// Store the key in the system keychain (service "tidyward", account = provider name).
 pub fn set_key(p: Provider, key: &str) -> Result<()> {
     keyring::Entry::new("tidyward", p.name())?.set_password(key.trim())?;
+    remember(p, key.trim());
     Ok(())
 }
 
@@ -160,10 +177,15 @@ pub fn api_key(p: Provider) -> Result<String> {
             }
         }
     }
+    if let Some(k) = cached(p) {
+        return Ok(k);
+    }
     let entry = keyring::Entry::new("tidyward", p.name())?;
-    entry.get_password().map_err(|_| {
+    let key = entry.get_password().map_err(|_| {
         anyhow!("no {} key: run `tidyward key set`, or set {}", p.name(), p.key_env().join(" or "))
-    })
+    })?;
+    remember(p, &key);
+    Ok(key)
 }
 
 #[cfg(test)]

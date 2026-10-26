@@ -45,10 +45,27 @@ pub fn renamed(src: &Path, stem: &str) -> Result<String> {
     })
 }
 
+/// Folders that are really an app's or a library's insides: never move anything into them.
+const PACKAGES: &[&str] = &[
+    "app", "photoslibrary", "photolibrary", "aplibrary", "musiclibrary", "tvlibrary", "imovielibrary",
+    "fcpbundle", "logicx", "band", "bundle", "framework", "plugin", "kext", "pkg", "mpkg", "xcodeproj", "xcworkspace",
+];
+
+fn inside_package(dir: &Path) -> Option<String> {
+    dir.components().find_map(|c| {
+        let name = c.as_os_str().to_string_lossy();
+        let ext = Path::new(name.as_ref()).extension()?.to_string_lossy().to_lowercase();
+        PACKAGES.contains(&ext.as_str()).then(|| name.into_owned())
+    })
+}
+
 /// Like [`move_into`], under the new name `stem` (the extension stays) when given.
 pub fn move_into_as(src: &Path, dest_dir: &Path, stem: Option<&str>) -> Result<PathBuf> {
     if !src.exists() {
         bail!("{} no longer exists", src.display());
+    }
+    if let Some(p) = inside_package(dest_dir) {
+        bail!("{} is a package or library ({p}); files are never moved into one", dest_dir.display());
     }
     let name = match stem {
         Some(s) => renamed(src, s)?,
@@ -101,6 +118,18 @@ pub fn restore(from: &Path, to: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn never_into_a_package() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("IMG_1.jpg");
+        fs::write(&src, b"x").unwrap();
+        let lib = t.path().join("Pictures/Photos Library.photoslibrary");
+        assert!(move_into(&src, &lib).is_err());
+        assert!(move_into(&src, &lib.join("originals")).is_err(), "nor anywhere inside one");
+        assert!(src.exists(), "the file stays put");
+        assert!(move_into(&src, &t.path().join("Pictures/Photos")).is_ok());
+    }
 
     #[test]
     fn rename_keeps_the_extension_and_undoes() {
