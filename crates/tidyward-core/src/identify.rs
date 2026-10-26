@@ -8,6 +8,7 @@
 //! | no camera + exact phone/tablet screen size          | screenshot          |
 //! | name says screenshot / screen recording             | screenshot          |
 //! | extension: partial download, installer, video/audio, 3D/print, code | that purpose |
+//! | folder or archive where four in five files are one of those, or camera photos | that purpose |
 
 use crate::item::{Item, Kind};
 use crate::words::name_features;
@@ -149,6 +150,23 @@ pub fn local_identify(item: &Item) -> Option<Identity> {
         Kind::Installer => Some(local(Purpose::Installer, format!("installer ({ext})"))),
         Kind::Video | Kind::Audio => Some(local(Purpose::Media, format!("{} file ({ext})", item.kind.label()))),
         Kind::Model3d | Kind::Code => Some(local(Purpose::WorkProject, format!("{} ({ext})", item.kind.label()))),
+        Kind::Folder | Kind::Archive => {
+            let ins = item.inside.as_ref()?;
+            let what = item.kind.label();
+            let p = match ins.mostly()? {
+                Kind::Installer => Purpose::Installer,
+                Kind::Video | Kind::Audio => Purpose::Media,
+                Kind::Model3d | Kind::Code => Purpose::WorkProject,
+                // camera formats only: a folder of PNGs may be screenshots or a design
+                Kind::Image
+                    if ins.exts.iter().filter(|(e, _)| Kind::of(e, false) == Kind::Image).all(|(e, _)| [".jpg", ".jpeg", ".heic"].contains(&e.as_str())) =>
+                {
+                    Purpose::Photo
+                }
+                _ => return None,
+            };
+            Some(local(p, format!("{what} of {}", ins.describe())))
+        }
         _ => None,
     }
 }
@@ -203,6 +221,7 @@ pub(crate) mod tests {
             dupes: 0,
             redundant_copy: false,
             app_installed: None,
+            inside: None,
         }
     }
 
@@ -228,6 +247,20 @@ pub(crate) mod tests {
         assert_eq!(local_identify(&item("tool.dmg")).unwrap().purpose, Purpose::Installer);
         assert_eq!(local_identify(&item("part.stl")).unwrap().purpose, Purpose::WorkProject);
         assert!(local_identify(&item("letter.pdf")).is_none());
+    }
+
+    #[test]
+    fn by_what_is_inside() {
+        let with = |name: &str, paths: &[&str]| {
+            let mut i = item(name);
+            i.inside = Some(crate::item::Inside::from_paths(paths.iter().map(|s| s.to_string())));
+            local_identify(&i).map(|id| id.purpose)
+        };
+        assert_eq!(with("files (3).zip", &["Tool.app/Contents/Info.plist", "Tool.app/Contents/MacOS/tool"]), Some(Purpose::Installer));
+        assert_eq!(with("Archive.zip", &["IMG_1.HEIC", "IMG_2.jpg", "IMG_3.jpg", "IMG_4.jpg", "notes.txt"]), Some(Purpose::Photo));
+        assert_eq!(with("Archive.zip", &["a.png", "b.png"]), None, "PNGs may be screenshots or a design");
+        assert_eq!(with("Archive.zip", &["a.pdf", "b.jpg"]), None, "a mix is for the model");
+        assert_eq!(with("print.zip", &["part.stl", "part.3mf", "readme.txt", "x.stl", "y.stl"]), Some(Purpose::WorkProject));
     }
 
     #[test]

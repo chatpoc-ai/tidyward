@@ -1,5 +1,6 @@
 //! The state sent to the model for one item. This is the whole of what leaves the machine about a
-//! file: a masked name and bucketed words. No path, no real name, no contents.
+//! file: a masked name and bucketed words. No path, no real name, no contents. For a folder or
+//! an archive, the mix of file types inside, but not the names of the files in it.
 
 use crate::item::{Item, Kind};
 use crate::words::{age_words, bucket, creator_kind, name_features, size_words};
@@ -52,6 +53,9 @@ pub fn build(item: &Item, masked: &str, o: &StateOptions) -> Map<String, Value> 
         );
         put("files inside", w.into());
     }
+    if let Some(ins) = item.inside.as_ref().filter(|_| matches!(item.kind, Kind::Folder | Kind::Archive)) {
+        put("what is inside, by file type", ins.describe());
+    }
     if let Some(installed) = item.app_installed {
         put("matching app already installed", if installed { "yes" } else { "no or unknown" }.into());
     }
@@ -85,4 +89,21 @@ pub fn build(item: &Item, masked: &str, o: &StateOptions) -> Map<String, Value> 
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::identify::tests::item;
+    use crate::item::Inside;
+
+    #[test]
+    fn inside_names_never_leave() {
+        let mut zip = item("photos.zip");
+        zip.inside = Some(Inside::from_paths(["Jane at the lake.jpg".to_string(), "Jane passport.jpg".to_string()]));
+        let s = build(&zip, "photos.zip", &StateOptions { folder: "Downloads", send_domain: false, now: 0 });
+        assert_eq!(s["what is inside, by file type"], "2 files: 2 image (.jpg)");
+        let all = serde_json::to_string(&s).unwrap();
+        assert!(!all.contains("Jane") && !all.contains("lake"), "{all}");
+    }
 }

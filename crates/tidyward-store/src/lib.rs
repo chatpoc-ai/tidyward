@@ -359,6 +359,7 @@ mod tests {
             dupes: 0,
             redundant_copy: false,
             app_installed: None,
+            inside: None,
         }
     }
 

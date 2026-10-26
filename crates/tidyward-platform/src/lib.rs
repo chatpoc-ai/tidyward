@@ -16,6 +16,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+use tidyward_core::item::Inside;
 use tidyward_core::{Item, Kind};
 
 #[derive(Debug, Clone)]
@@ -34,9 +35,10 @@ fn unix(t: std::io::Result<std::time::SystemTime>) -> i64 {
     t.ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// Total size and file count of a folder, without following symlinks.
-fn du(path: &Path) -> (u64, u64) {
+/// Total size and file count of a folder, without following symlinks, and what it holds.
+fn du(path: &Path) -> (u64, u64, Inside) {
     let (mut size, mut count) = (0, 0);
+    let mut paths = Vec::new();
     let mut stack = vec![path.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(rd) = fs::read_dir(&dir) else { continue };
@@ -47,10 +49,32 @@ fn du(path: &Path) -> (u64, u64) {
             } else {
                 size += md.len();
                 count += 1;
+                if let Ok(rel) = e.path().strip_prefix(path) {
+                    paths.push(rel.to_string_lossy().into_owned());
+                }
             }
         }
     }
-    (size, count)
+    paths.sort();
+    (size, count, Inside::from_paths(paths))
+}
+
+/// Compressed tar files are read through to list them, so big ones are skipped; a zip lists
+/// from its directory at the end.
+const TAR_LIMIT: u64 = 500_000_000;
+
+/// The files in an archive, listed by the system's `tar` without unpacking anything.
+fn list_archive(path: &Path, ext: &str, size: u64) -> Option<Inside> {
+    if ext != ".zip" && size > TAR_LIMIT {
+        return None;
+    }
+    let out = std::process::Command::new("tar").arg("-tf").arg(path).stderr(std::process::Stdio::null()).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // folders are listed with a trailing slash
+    Some(Inside::from_paths(text.lines().filter(|l| !l.ends_with('/')).map(str::to_string)))
 }
 
 /// Size + first and last 64 KB: cheap and good enough to find exact duplicates in one folder.
@@ -95,8 +119,22 @@ pub fn scan_folder(root: &Path, opts: &ScanOptions) -> Result<Vec<Item>> {
         let name = e.file_name().to_string_lossy().into_owned();
         let is_dir = md.is_dir();
         let ext = ext_of(&name, is_dir);
-        let (size, files_inside) = if is_dir { du(&path) } else { (md.len(), 1) };
         let kind = Kind::of(&ext, is_dir);
+        let (size, mut files_inside, inside) = if is_dir && kind == Kind::Folder {
+            let (s, n, ins) = du(&path);
+            (s, n, Some(ins))
+        } else if is_dir {
+            let (s, n, _) = du(&path);
+            (s, n, None)
+        } else if kind == Kind::Archive {
+            (md.len(), 1, list_archive(&path, &ext, md.len()))
+        } else {
+            (md.len(), 1, None)
+        };
+        if kind == Kind::Archive {
+            // a different listing is a different archive to the file memory
+            files_inside = inside.as_ref().map_or(1, |i| i.files.max(1));
+        }
         let qhash = if !is_dir && size > 0 { quick_hash(&path, size) } else { None };
         items.push(Item {
             name,
@@ -120,6 +158,7 @@ pub fn scan_folder(root: &Path, opts: &ScanOptions) -> Result<Vec<Item>> {
             dupes: 0,
             redundant_copy: false,
             app_installed: None,
+            inside,
             path,
         });
     }
@@ -177,5 +216,23 @@ mod tests {
         assert!(by("report (1).pdf").redundant_copy, "the later copy is the extra one");
         assert!(!by("report.pdf").redundant_copy && by("report.pdf").dupes == 1);
         assert_eq!(by("other.txt").dupes, 0);
+        assert_eq!(by("folder").inside.as_ref().unwrap().names, ["a"]);
+    }
+
+    #[test]
+    fn lists_an_archive_without_unpacking() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("src");
+        fs::create_dir_all(src.join("pics")).unwrap();
+        for n in ["pics/one.jpg", "pics/two.jpg", "readme.txt"] {
+            fs::write(src.join(n), b"x").unwrap();
+        }
+        let tgz = d.path().join("bundle.tgz");
+        let ok = std::process::Command::new("tar").arg("-czf").arg(&tgz).arg("-C").arg(&src).arg(".").status().unwrap();
+        assert!(ok.success());
+        let ins = list_archive(&tgz, ".tgz", 100).unwrap();
+        assert_eq!(ins.files, 3);
+        assert_eq!(ins.exts[0], (".jpg".to_string(), 2));
+        assert!(list_archive(&d.path().join("missing.zip"), ".zip", 1).is_none());
     }
 }

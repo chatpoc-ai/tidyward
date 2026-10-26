@@ -125,7 +125,7 @@ action | what the file is | exact conditions
 ```
 
 - **action**: `keep`, `trash`, `ask`, or `archive:<folder>`. Archive folders are inside your home folder (`archive:Documents/Receipts` means `~/Documents/Receipts`).
-- **what the file is**: plain language, such as `a screenshot` or `an invoice, receipt or bill`. The model judges it from the masked name and metadata, never from the real name or contents. `*` means any file.
+- **what the file is**: plain language, such as `a screenshot` or `an invoice, receipt or bill`. The model judges it from the masked name and metadata, never from the real name or contents (for a folder or zip, it also sees the mix of file types inside, never their names). `*` means any file.
 - **exact conditions** (optional): checked on your Mac, not by the model. Separate them with commas; all must hold.
 
 | Condition | Holds when |

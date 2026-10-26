@@ -132,12 +132,14 @@ fn has_word(text: &str, word: &str) -> bool {
     padded.contains(&format!(" {word} "))
 }
 
-fn answer(t: &Topic, item: &Item, id: &Identity, name: &str) -> Option<bool> {
+fn answer(t: &Topic, item: &Item, id: &Identity, name: &str, inner: &[String]) -> Option<bool> {
     if let Some(sure) = (t.test)(item, id) {
         return Some(sure);
     }
-    // a name can say yes; it can't say no
-    t.name.iter().any(|w| has_word(name, w)).then_some(true)
+    // a name can say yes; it can't say no. For a folder or archive, so can most of the names inside.
+    let says = |n: &str| t.name.iter().any(|w| has_word(n, w));
+    let inner_hits = inner.iter().filter(|n| says(n)).count();
+    (says(name) || inner_hits * 2 > inner.len()).then_some(true)
 }
 
 /// The probability that `cond` holds for the item, if it can be settled locally.
@@ -156,7 +158,8 @@ pub fn answer_condition(cond: &str, item: &Item, id: &Identity) -> Option<f64> {
         return None;
     }
     let name = fold(&item.name);
-    let answers: Vec<Option<bool>> = topics.iter().map(|t| answer(t, item, id, &name)).collect();
+    let inner: Vec<String> = item.inside.iter().flat_map(|i| &i.names).map(|n| fold(n)).collect();
+    let answers: Vec<Option<bool>> = topics.iter().map(|t| answer(t, item, id, &name, &inner)).collect();
     if answers.contains(&Some(true)) {
         Some(LOCAL_YES)
     } else if answers.iter().all(|a| *a == Some(false)) {
@@ -193,6 +196,18 @@ mod tests {
         assert_eq!(ask("x.pdf", "something only a model could judge"), None);
         assert_eq!(ask("Jane_中文期末考试_AB卷_1.pdf", "schoolwork, an exam or a school notice"), Some(LOCAL_YES));
         assert_eq!(ask("Jane_Doe_Resume_ZH.pdf", "a resume or CV"), Some(LOCAL_YES));
+    }
+
+    #[test]
+    fn most_names_inside_can_say_yes() {
+        let bills = "an invoice, receipt or bill";
+        let with = |paths: &[&str]| {
+            let mut z = item("files.zip");
+            z.inside = Some(crate::item::Inside::from_paths(paths.iter().map(|s| s.to_string())));
+            answer_condition(bills, &z, &unknown())
+        };
+        assert_eq!(with(&["Invoice 1.pdf", "Invoice 2.pdf", "notes.txt"]), Some(LOCAL_YES));
+        assert_eq!(with(&["Invoice 1.pdf", "photo.jpg", "notes.txt"]), None, "one invoice does not make the zip one");
     }
 
     #[test]

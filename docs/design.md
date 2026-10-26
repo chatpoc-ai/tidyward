@@ -43,6 +43,9 @@ Local signals come first, and the first sure signal wins:
 | no camera, and the size exactly matches a phone or tablet screen | screenshot |
 | name says screenshot or screen recording | screenshot |
 | extension: installer, video/audio, 3D model, code, partial download | that purpose |
+| folder or archive where four in five files are one of those (or camera photos: .jpg, .heic) | that purpose |
+
+Archives are listed with the system's `tar -tf`, without unpacking; compressed tar files over 500 MB are skipped because listing them means reading them through. Hidden files, `__MACOSX` resource forks and everything inside an app or other package (counted as one file) are left out.
 
 The screen-size table leaves out sizes that are common for other images (for example 1080×1920 wallpapers). Everything else goes to the model with a single question: *what is this?*
 
@@ -93,14 +96,15 @@ Only words, never raw values, because decision models read bucketed words better
 | made by (category only) | `a web browser`, `an automated system (generated PDF)` |
 | pages | `2-5 pages` |
 | download source | domain only; can be turned off |
+| inside a folder or archive | `40 files: 32 image (.jpg), 6 document (.pdf), 2 more of other types` |
 | clues from the name, computed locally | `looks like a screenshot`, `has a copy suffix such as (1)` |
 | what layer 1 said | `a screenshot (certain, camera metadata)` |
 
-The path, the real name, the contents and the exact app name and version are never sent.
+The path, the real name, the contents and the exact app name and version are never sent. For a folder or archive, only the mix of file types is sent; the names of the files inside are read on the Mac (see below) and never sent.
 
 ### Local-only mode
 
-With `provider = "local"` nothing is sent anywhere. Items the system cannot identify stay unidentified (and are not remembered, so a model can identify them later). A "what it is" condition is matched to topics by its words; each topic answers from hard signals (screenshot flag, camera, file type) or from telling words in the real name, read on the Mac. A name can say yes but never no. Unanswered conditions never make a rule apply, so nothing moves on a guess; the plan counts how many items only a model could judge. Decisions settled this way are marked "this Mac" instead of the model.
+With `provider = "local"` nothing is sent anywhere. Items the system cannot identify stay unidentified (and are not remembered, so a model can identify them later). A "what it is" condition is matched to topics by its words; each topic answers from hard signals (screenshot flag, camera, file type) or from telling words in the real name, read on the Mac. For a folder or archive, more than half of the names inside can say yes too. A name can say yes but never no. Unanswered conditions never make a rule apply, so nothing moves on a guess; the plan counts how many items only a model could judge. Decisions settled this way are marked "this Mac" instead of the model.
 
 ### Masking
 
