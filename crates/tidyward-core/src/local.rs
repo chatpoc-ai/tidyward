@@ -65,6 +65,13 @@ const SPECIFIC: &[Topic] = &[
         test: none,
     },
     Topic {
+        cond: &["school", "exam", "homework", "学校", "考试", "作业", "學校", "考試", "作業", "試験", "시험"],
+        name: &["exam", "exams", "homework", "assignment", "quiz", "worksheet", "transcript", "report card", "school",
+                "examen", "devoir", "ecole", "考试", "期末", "期中", "作业", "试卷", "测验", "学校", "成绩单",
+                "考試", "作業", "試卷", "學校", "成績單", "試験", "宿題", "学校", "시험", "숙제", "학교"],
+        test: none,
+    },
+    Topic {
         cond: &["unfinished", "partial download", "incomplete download", "没下载完", "未完成"],
         name: &[],
         test: |i, id| Some(id.purpose == Purpose::Temporary && id.source == "local" || i.ext == ".crdownload" || i.ext == ".part"),
@@ -184,6 +191,8 @@ mod tests {
         assert_eq!(ask("notes.pdf", "an invoice, receipt or bill"), None, "no telling word: no answer, not a no");
         assert_eq!(ask("billing-report.pdf", "an invoice, receipt or bill"), None, "whole words only");
         assert_eq!(ask("x.pdf", "something only a model could judge"), None);
+        assert_eq!(ask("Jane_中文期末考试_AB卷_1.pdf", "schoolwork, an exam or a school notice"), Some(LOCAL_YES));
+        assert_eq!(ask("Jane_Doe_Resume_ZH.pdf", "a resume or CV"), Some(LOCAL_YES));
     }
 
     #[test]
