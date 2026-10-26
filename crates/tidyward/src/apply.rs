@@ -51,7 +51,7 @@ pub fn apply_item(cfg: &Config, store: &Store, plan_id: i64, it: &PlanItem, acti
         Action::Trash => ("trash", tidyward_exec::trash(&it.path)?),
         Action::Keep | Action::Ask => unreachable!(),
     };
-    let op = store.log_operation(Some(plan_id), now, kind, &it.path, &to)?;
+    let op = store.log_operation(Some(plan_id), now, kind, &it.path, &to, it.domain.as_deref())?;
     Ok(Outcome::Done { op, to })
 }
 

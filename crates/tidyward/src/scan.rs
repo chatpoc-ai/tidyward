@@ -27,6 +27,9 @@ pub struct PlanItem {
     pub arrived: i64,
     #[serde(default)]
     pub last_used: Option<i64>,
+    /// The site it was downloaded from, if the system knows.
+    #[serde(default)]
+    pub domain: Option<String>,
     pub identity: Identity,
     pub decision: Decision,
 }
@@ -264,6 +267,7 @@ pub fn scan_folder(cfg: &Config, paths: &Paths, store: &Store, folder: &Path, fu
             fingerprint: item.fingerprint(),
             arrived: item.arrived(),
             last_used: item.last_used,
+            domain: item.domain.clone(),
             identity: identities[i].clone(),
             decision: {
                 let mut d = engine::decide(&cands_all[i], &semantic[i], cfg.hit, cfg.weak);

@@ -138,6 +138,7 @@ action | what the file is | exact conditions
 | `has duplicate` | it is an extra copy of another file here (the earliest copy is never counted) |
 | `app installed` | it is an installer for an app that is already installed |
 | `name starts with IMG_`, `name contains invoice` | the real name, checked locally |
+| `from mybank.com` | it was downloaded from that site (or a subdomain of it) |
 
 **The first rule that applies wins**, so put protective rules (`ask`, `keep`) at the top. A file no rule applies to is left to you, so end with `keep | * |` if you want everything else left alone.
 

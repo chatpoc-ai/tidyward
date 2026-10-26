@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS plans (
   id INTEGER PRIMARY KEY, created INTEGER NOT NULL, folder TEXT NOT NULL, body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS operations (
   id INTEGER PRIMARY KEY, plan_id INTEGER, ts INTEGER NOT NULL, action TEXT NOT NULL,
-  src TEXT NOT NULL, dst TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0);
+  src TEXT NOT NULL, dst TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0, domain TEXT);
 ";
+
+/// Columns added after the first release, for databases made before them.
+const UPGRADES: &[(&str, &str, &str)] = &[("operations", "domain", "TEXT")];
 
 pub struct Store {
     conn: Connection,
@@ -81,6 +84,20 @@ pub struct Operation {
     pub src: PathBuf,
     pub dst: PathBuf,
     pub undone: bool,
+    /// The site the file was downloaded from, if known (for learning habits).
+    pub domain: Option<String>,
+}
+
+fn upgrade(conn: &Connection) -> Result<()> {
+    for (table, column, kind) in UPGRADES {
+        let has: bool = conn
+            .prepare(&format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1"))?
+            .exists([column])?;
+        if !has {
+            conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {kind}"))?;
+        }
+    }
+    Ok(())
 }
 
 fn p(path: &Path) -> String {
@@ -94,6 +111,7 @@ impl Store {
         }
         let conn = Connection::open(path)?;
         conn.execute_batch(SCHEMA)?;
+        upgrade(&conn)?;
         Ok(Store { conn })
     }
 
@@ -274,10 +292,10 @@ impl Store {
             .optional()?)
     }
 
-    pub fn log_operation(&self, plan_id: Option<i64>, ts: i64, action: &str, src: &Path, dst: &Path) -> Result<i64> {
+    pub fn log_operation(&self, plan_id: Option<i64>, ts: i64, action: &str, src: &Path, dst: &Path, domain: Option<&str>) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO operations (plan_id, ts, action, src, dst) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![plan_id, ts, action, p(src), p(dst)],
+            "INSERT INTO operations (plan_id, ts, action, src, dst, domain) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![plan_id, ts, action, p(src), p(dst), domain],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -290,7 +308,7 @@ impl Store {
     /// Newest first.
     pub fn operations(&self, limit: i64) -> Result<Vec<Operation>> {
         let mut st = self.conn.prepare(
-            "SELECT id, plan_id, ts, action, src, dst, undone FROM operations ORDER BY id DESC LIMIT ?1",
+            "SELECT id, plan_id, ts, action, src, dst, undone, domain FROM operations ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = st.query_map([limit], |r| {
             Ok(Operation {
@@ -301,6 +319,7 @@ impl Store {
                 src: PathBuf::from(r.get::<_, String>(4)?),
                 dst: PathBuf::from(r.get::<_, String>(5)?),
                 undone: r.get::<_, i64>(6)? != 0,
+                domain: r.get(7)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -390,8 +409,27 @@ mod tests {
         s.log_run("r2", 2, 5, 0, false).unwrap();
         let runs = s.runs().unwrap();
         assert_eq!((runs[0].calls, runs[0].input_tokens, runs[1].calls), (1, 1000, 0));
-        let op = s.log_operation(None, 3, "trash", Path::new("/a"), Path::new("/t/a")).unwrap();
+        let op = s.log_operation(None, 3, "trash", Path::new("/a"), Path::new("/t/a"), Some("example.com")).unwrap();
         s.mark_undone(op).unwrap();
-        assert!(s.operations(10).unwrap()[0].undone);
+        let o = &s.operations(10).unwrap()[0];
+        assert!(o.undone && o.domain.as_deref() == Some("example.com"));
+    }
+
+    #[test]
+    fn old_databases_get_new_columns() {
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("old.db");
+        // an operations table as the first release made it, without `domain`
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE operations (id INTEGER PRIMARY KEY, plan_id INTEGER, ts INTEGER NOT NULL, action TEXT NOT NULL, src TEXT NOT NULL, dst TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0);
+                            INSERT INTO operations (ts, action, src, dst) VALUES (1, 'move', '/a', '/b');")
+            .unwrap();
+        let s = Store::open(&path).unwrap();
+        assert_eq!(s.operations(10).unwrap()[0].domain, None, "old rows keep working");
+        s.log_operation(None, 2, "move", Path::new("/c"), Path::new("/d"), Some("x.org")).unwrap();
+        assert_eq!(s.operations(10).unwrap()[0].domain.as_deref(), Some("x.org"));
+        drop(s);
+        Store::open(&path).unwrap(); // upgrading twice is harmless
     }
 }

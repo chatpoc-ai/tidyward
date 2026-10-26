@@ -16,9 +16,11 @@
 //! | `app installed`         | `App已安装`     |
 //! | `name starts with X`    | `名称以X开头`    |
 //! | `name contains X`       | `名称含X`       |
+//! | `from example.com`      | `来自example.com` |
 //!
 //! `<` works wherever `>` does. "opened>N days" also holds for files never opened.
 //! "has duplicate" holds only for the extra copies, never for the original of a group.
+//! "from X" holds when the file was downloaded from site X or one of its subdomains.
 
 use crate::item::Item;
 use crate::words::DAY;
@@ -69,6 +71,8 @@ pub enum Filter {
     AppInstalled,
     NameStarts(String),
     NameContains(String),
+    /// Downloaded from this site (or a subdomain of it).
+    Domain(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +111,7 @@ static EXT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(扩展名|exte
 static STARTS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(?:名称以(\S+)开头|name starts with\s+(\S+))$").unwrap());
 static CONTAINS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(?:名称含(\S+)|name contains\s+(\S+))$").unwrap());
+static DOMAIN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(?:来自\s*([a-z0-9.-]+\.[a-z]{2,})|from\s+([a-z0-9.-]+\.[a-z]{2,}))$").unwrap());
 
 pub fn parse_filter(f: &str) -> Option<Filter> {
     let lower = f.to_lowercase();
@@ -135,6 +140,9 @@ pub fn parse_filter(f: &str) -> Option<Filter> {
     }
     if let Ok(Some(c)) = CONTAINS.captures(f) {
         return Some(Filter::NameContains(c.get(1).or(c.get(2))?.as_str().to_lowercase()));
+    }
+    if let Ok(Some(c)) = DOMAIN.captures(f) {
+        return Some(Filter::Domain(c.get(1).or(c.get(2))?.as_str().to_lowercase().trim_start_matches("www.").to_string()));
     }
     None
 }
@@ -200,6 +208,10 @@ pub fn exact_ok(rule: &Rule, item: &Item, now: i64) -> bool {
         // checked on the real name, here on this machine
         Filter::NameStarts(p) => name.starts_with(p.as_str()),
         Filter::NameContains(p) => name.contains(p.as_str()),
+        Filter::Domain(d) => item.domain.as_deref().is_some_and(|x| {
+            let x = x.to_lowercase();
+            x == *d || x.ends_with(&format!(".{d}"))
+        }),
     })
 }
 
@@ -248,6 +260,20 @@ keep                       | *            | opened<7 days
         let mut c = item("img_0001.HEIC");
         c.ext = ".heic".into();
         assert!(exact_ok(&r[3], &c, now), "name and extension checks ignore case");
+    }
+
+    #[test]
+    fn source_site() {
+        let r = parse("archive:Bills | * | from mybank.com\ntrash | * | 来自 example.org").unwrap();
+        assert_eq!(r[0].exact[0], Filter::Domain("mybank.com".into()));
+        assert_eq!(r[1].exact[0], Filter::Domain("example.org".into()));
+        let mut i = item("statement.pdf");
+        i.domain = Some("secure.mybank.com".into());
+        assert!(exact_ok(&r[0], &i, 0), "subdomains count");
+        i.domain = Some("notmybank.com".into());
+        assert!(!exact_ok(&r[0], &i, 0), "a different site does not");
+        i.domain = None;
+        assert!(!exact_ok(&r[0], &i, 0));
     }
 
     #[test]
